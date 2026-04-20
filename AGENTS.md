@@ -10,6 +10,7 @@ These instructions apply to the whole repository and all applications inside it.
 - `hr-core` is the core service responsible for hotel parsing and hotel database population.
 - `hr-core` uses Apify for data collection.
 - Deduplication is mandatory for hotel ingestion flows and should be treated as a first-class concern.
+- Node.js version must be `24` or higher across the repository.
 
 ## Architecture Rules
 

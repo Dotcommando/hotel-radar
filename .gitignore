@@ -89,3 +89,5 @@ cvm-match/tests/external-test-data/*
 
 # e2e test results
 **/test-results
+
+**/n8n-chain

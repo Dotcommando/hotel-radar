@@ -1,0 +1,91 @@
+x-hr-core-service: &hr-core-service
+  image: node:24-alpine
+  working_dir: /opt/hr-core
+  command: sh -c "npm install && npm run start:dev"
+  env_file:
+    - ./.env
+  environment:
+    PORT: "3000"
+    MONGODB_URI: mongodb://${MONGO_INITDB_ROOT_USERNAME}:${MONGO_INITDB_ROOT_PASSWORD}@hr-mongodb:27017/${MONGO_INITDB_DATABASE}?authSource=admin
+  volumes:
+    - ./hr-core:/opt/hr-core
+  depends_on:
+    hr-mongodb:
+      condition: service_healthy
+  healthcheck:
+    test:
+      - CMD-SHELL
+      - wget -qO- http://127.0.0.1:3000/ || exit 1
+    interval: 10s
+    timeout: 5s
+    retries: 10
+    start_period: 30s
+  networks:
+    - hr-network
+
+services:
+  hr-core:
+    image: nginx:1.27-alpine
+    environment:
+      HR_CORE_ACTIVE_SLOT: ${HR_CORE_ACTIVE_SLOT}
+    volumes:
+      - ./docker/nginx/templates:/etc/nginx/templates:ro
+    ports:
+      - "3000:3000"
+    depends_on:
+      hr-core-blue:
+        condition: service_healthy
+      hr-core-green:
+        condition: service_healthy
+    networks:
+      - hr-network
+
+  hr-core-blue:
+    <<: *hr-core-service
+    volumes:
+      - ./hr-core:/opt/hr-core
+      - hr-core-blue-node-modules:/opt/hr-core/node_modules
+    ports:
+      - "3001:3000"
+
+  hr-core-green:
+    <<: *hr-core-service
+    volumes:
+      - ./hr-core:/opt/hr-core
+      - hr-core-green-node-modules:/opt/hr-core/node_modules
+    ports:
+      - "3002:3000"
+
+  hr-mongodb:
+    image: mongo:8.2
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_INITDB_ROOT_USERNAME}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_INITDB_ROOT_PASSWORD}
+      MONGO_INITDB_DATABASE: ${MONGO_INITDB_DATABASE}
+    command:
+      - mongod
+      - --bind_ip_all
+      - --dbpath
+      - /hr-data
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - mongosh --quiet --eval "db.adminCommand('ping').ok" admin | grep 1
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+    ports:
+      - "27777:27017"
+    volumes:
+      - ./hr-data:/hr-data
+    networks:
+      - hr-network
+
+networks:
+  hr-network:
+    name: hr-network
+
+volumes:
+  hr-core-blue-node-modules:
+  hr-core-green-node-modules:
