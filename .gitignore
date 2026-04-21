@@ -91,3 +91,5 @@ cvm-match/tests/external-test-data/*
 **/test-results
 
 **/n8n-chain
+
+hr-data/

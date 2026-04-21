@@ -1,0 +1,16 @@
+.git
+.gitignore
+.dockerignore
+.DS_Store
+.idea
+.env
+.env.*
+
+**/node_modules
+**/dist
+**/build
+**/coverage
+**/.nyc_output
+**/*.log
+
+hr-data

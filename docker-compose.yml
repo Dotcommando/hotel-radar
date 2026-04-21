@@ -32,11 +32,6 @@ services:
       - ./docker/nginx/templates:/etc/nginx/templates:ro
     ports:
       - "3000:3000"
-    depends_on:
-      hr-core-blue:
-        condition: service_healthy
-      hr-core-green:
-        condition: service_healthy
     networks:
       - hr-network
 
