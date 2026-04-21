@@ -26,6 +26,7 @@ x-hr-core-service: &hr-core-service
 services:
   hr-core:
     image: nginx:1.27-alpine
+    container_name: hr-core
     environment:
       HR_CORE_ACTIVE_SLOT: ${HR_CORE_ACTIVE_SLOT}
     volumes:
@@ -37,6 +38,7 @@ services:
 
   hr-core-blue:
     <<: *hr-core-service
+    container_name: hr-core-blue
     volumes:
       - ./hr-core:/opt/hr-core
       - hr-core-blue-node-modules:/opt/hr-core/node_modules
@@ -45,6 +47,7 @@ services:
 
   hr-core-green:
     <<: *hr-core-service
+    container_name: hr-core-green
     volumes:
       - ./hr-core:/opt/hr-core
       - hr-core-green-node-modules:/opt/hr-core/node_modules
@@ -53,6 +56,7 @@ services:
 
   hr-mongodb:
     image: mongo:8.2
+    container_name: hr-mongodb
     environment:
       MONGO_INITDB_ROOT_USERNAME: ${MONGO_INITDB_ROOT_USERNAME}
       MONGO_INITDB_ROOT_PASSWORD: ${MONGO_INITDB_ROOT_PASSWORD}
