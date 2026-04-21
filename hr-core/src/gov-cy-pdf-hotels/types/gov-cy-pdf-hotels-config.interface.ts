@@ -6,5 +6,6 @@ export interface IGovCyPdfHotelsConfig {
   openAiApiKey: string | null;
   openAiModel: string;
   openAiResponsesTimeoutMs: number;
+  parsingCacheTimeMs: number;
   storageDirectoryPath: string;
 }

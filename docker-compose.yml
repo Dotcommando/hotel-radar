@@ -1,5 +1,5 @@
 x-hr-core-service: &hr-core-service
-  image: node:24-alpine
+  image: mcr.microsoft.com/playwright:v1.57.0-noble
   working_dir: /opt/hr-core
   command: sh -c "npm install && npm run start:dev"
   env_file:

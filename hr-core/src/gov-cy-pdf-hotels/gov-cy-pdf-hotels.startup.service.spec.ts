@@ -21,6 +21,7 @@ describe('GovCyPdfHotelsStartupService', () => {
     openAiApiKey: 'openai-key',
     openAiModel: 'gpt-4.1',
     openAiResponsesTimeoutMs: 360000,
+    parsingCacheTimeMs: 60000,
     storageDirectoryPath: '/tmp/hr-core-pdf-files',
   };
 

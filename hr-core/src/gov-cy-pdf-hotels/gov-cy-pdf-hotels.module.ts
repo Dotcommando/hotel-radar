@@ -1,36 +1,27 @@
 import { Module } from '@nestjs/common';
+import { ParsedFilesModule } from '../parsed-files/parsed-files.module';
+import { PromptsModule } from '../prompts/prompts.module';
+import { RawHotelsModule } from '../raw-hotels/raw-hotels.module';
 import { GOV_CY_PDF_HOTELS_CONFIG } from './constants/gov-cy-pdf-hotels-config.constant';
-import {
-  APIFY_WEB_SCRAPER_ACTOR_ID,
-  DEFAULT_DOWNLOAD_TIMEOUT_MS,
-  DEFAULT_OPENAI_RESPONSES_TIMEOUT_MS,
-  DEFAULT_STORAGE_DIRECTORY_PATH,
-  GOV_CY_HOTELS_PAGE_URL,
-} from './constants/gov-cy-pdf-hotels.constants';
+import { GovCyPdfHotelsController } from './gov-cy-pdf-hotels.controller';
+import { buildGovCyPdfHotelsConfig } from './gov-cy-pdf-hotels-config';
+import { GovCyPdfDownloaderService } from './gov-cy-pdf-downloader.service';
 import { GovCyPdfHotelsService } from './gov-cy-pdf-hotels.service';
 import { GovCyPdfHotelsStartupService } from './gov-cy-pdf-hotels.startup.service';
-import { IGovCyPdfHotelsConfig } from './types/gov-cy-pdf-hotels-config.interface';
+import { RunGovCyPdfParsingUseCase } from './use-cases/run-gov-cy-pdf-parsing.use-case';
 
 @Module({
+  controllers: [GovCyPdfHotelsController],
   exports: [GovCyPdfHotelsService],
+  imports: [ParsedFilesModule, PromptsModule, RawHotelsModule],
   providers: [
+    GovCyPdfDownloaderService,
     GovCyPdfHotelsService,
     GovCyPdfHotelsStartupService,
+    RunGovCyPdfParsingUseCase,
     {
       provide: GOV_CY_PDF_HOTELS_CONFIG,
-      useFactory: (): IGovCyPdfHotelsConfig => ({
-        apifyActorId: process.env.APIFY_ACTOR_ID ?? APIFY_WEB_SCRAPER_ACTOR_ID,
-        apifyToken: process.env.APIFY_TOKEN ?? null,
-        downloadTimeoutMs: Number(process.env.PDF_DOWNLOAD_TIMEOUT_MS ?? DEFAULT_DOWNLOAD_TIMEOUT_MS),
-        govCyHotelsPageUrl: process.env.GOV_CY_HOTELS_PAGE_URL ?? GOV_CY_HOTELS_PAGE_URL,
-        openAiApiKey: process.env.OPENAI_API_KEY ?? null,
-        openAiModel: process.env.OPENAI_MODEL ?? 'gpt-4.1',
-        openAiResponsesTimeoutMs: Number(
-          process.env.OPENAI_RESPONSES_TIMEOUT_MS ?? DEFAULT_OPENAI_RESPONSES_TIMEOUT_MS,
-        ),
-        storageDirectoryPath:
-          process.env.PDF_STORAGE_DIRECTORY_PATH ?? DEFAULT_STORAGE_DIRECTORY_PATH,
-      }),
+      useFactory: buildGovCyPdfHotelsConfig,
     },
   ],
 })

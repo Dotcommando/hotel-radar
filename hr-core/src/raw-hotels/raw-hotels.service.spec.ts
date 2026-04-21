@@ -139,6 +139,28 @@ describe('RawHotelsService', () => {
     expect(result).toBe(3);
   });
 
+  it('reads many raw hotels by source file names and createdAt lower bound', async () => {
+    const createdAtFrom = new Date('2026-02-20T00:00:00.000Z');
+    const exec = jest.fn<Promise<IRawHotel[]>, []>().mockResolvedValue([rawHotelFixture]);
+
+    rawHotelModel.find.mockReturnValue({ exec });
+
+    const result = await service.readManyBySourceFileNamesAndCreatedAtFrom(
+      [rawHotelFixture.sourceFile.filename],
+      createdAtFrom,
+    );
+
+    expect(rawHotelModel.find).toHaveBeenCalledWith({
+      'sourceFile.filename': {
+        $in: [rawHotelFixture.sourceFile.filename],
+      },
+      createdAt: {
+        $gte: createdAtFrom,
+      },
+    });
+    expect(result).toEqual([rawHotelFixture]);
+  });
+
   it('returns zero when deleteManyBySourceFileNames receives no file names', async () => {
     const result = await service.deleteManyBySourceFileNames([]);
 

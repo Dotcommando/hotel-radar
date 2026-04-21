@@ -4,43 +4,62 @@ import {
   chmod,
   mkdir,
   readFile,
-  writeFile,
 } from 'node:fs/promises';
 import { Inject, Injectable } from '@nestjs/common';
 import { basename, join } from 'node:path';
+import { PROMPT_TYPE } from '../prompts/constants/prompt-type.enum';
+import { PromptsService } from '../prompts/prompts.service';
 import { GOV_CY_PDF_HOTELS_CONFIG } from './constants/gov-cy-pdf-hotels-config.constant';
 import {
   APIFY_DATASET_ITEMS_URL,
   GOV_CY_PDF_DOC_TYPE,
+  OPENAI_REQUEST_MAX_ATTEMPTS,
+  OPENAI_REQUEST_RETRY_DELAY_MS,
   OPENAI_FILES_URL,
+  OPENAI_RESPONSES_POLL_INTERVAL_MS,
   OPENAI_RESPONSES_URL,
 } from './constants/gov-cy-pdf-hotels.constants';
 import {
   OPENAI_PARSE_PDF_JSON_SCHEMA,
-  OPENAI_PARSE_PDF_SYSTEM_PROMPT,
-  OPENAI_PARSE_PDF_USER_PROMPT,
 } from './constants/openai-parse-pdf.constants';
 import { PDF_DISCOVERY_PAGE_FUNCTION } from './constants/pdf-discovery-page-function.constant';
+import { GovCyPdfDownloaderService } from './gov-cy-pdf-downloader.service';
 import { IApifyPdfLinksItem } from './types/apify-pdf-links-item.interface';
 import { IDownloadedGovCyPdfFile } from './types/downloaded-gov-cy-pdf-file.interface';
 import { IDiscoveredGovCyPdfFile } from './types/discovered-gov-cy-pdf-file.interface';
 import { IOpenAiFileUploadResponse } from './types/openai-file-upload-response.interface';
 import { IOpenAiHotelsEnvelope } from './types/openai-hotels-envelope.interface';
 import { IOpenAiResponse } from './types/openai-response.interface';
+import { IGovCyHotelContacts } from './types/gov-cy-hotel-contacts.interface';
 import { IRecognizedGovCyHotelRecord } from './types/recognized-gov-cy-hotel-record.interface';
 import type { IGovCyPdfHotelsConfig } from './types/gov-cy-pdf-hotels-config.interface';
+
+interface INormalizedWebsiteCandidate {
+  email: string | null;
+  index: number;
+  specificity: number;
+  website: string | null;
+}
 
 @Injectable()
 export class GovCyPdfHotelsService {
   constructor(
     @Inject(GOV_CY_PDF_HOTELS_CONFIG)
     private readonly config: IGovCyPdfHotelsConfig,
+    private readonly govCyPdfDownloaderService: GovCyPdfDownloaderService,
+    private readonly promptsService: PromptsService,
   ) {}
 
   async collectDownloadAndParsePdfFiles(): Promise<IRecognizedGovCyHotelRecord[]> {
+    console.log('[GovCyPdfHotelsService] starting discovery phase');
     const discoveredPdfFiles = await this.discoverPdfFiles();
-    const downloadedPdfFiles = await this.downloadPdfFiles(discoveredPdfFiles);
+    console.log(`[GovCyPdfHotelsService] discovery completed, pdfFiles=${discoveredPdfFiles.length}`);
 
+    console.log('[GovCyPdfHotelsService] starting download phase');
+    const downloadedPdfFiles = await this.downloadPdfFiles(discoveredPdfFiles);
+    console.log(`[GovCyPdfHotelsService] download completed, downloadedPdfFiles=${downloadedPdfFiles.length}`);
+
+    console.log('[GovCyPdfHotelsService] starting parse phase');
     return this.parsePdfFiles(downloadedPdfFiles);
   }
 
@@ -76,7 +95,11 @@ export class GovCyPdfHotelsService {
 
     const body = await response.json() as IApifyPdfLinksItem[];
 
-    return this.normalizeDiscoveredPdfFiles(body);
+    const normalizedPdfFiles = this.normalizeDiscoveredPdfFiles(body);
+
+    console.log(`[GovCyPdfHotelsService] normalized discovered pdf files=${normalizedPdfFiles.length}`);
+
+    return normalizedPdfFiles;
   }
 
   async ensureStorageDirectoryIsWritable(): Promise<string> {
@@ -96,6 +119,7 @@ export class GovCyPdfHotelsService {
     const downloadedPdfFiles: IDownloadedGovCyPdfFile[] = [];
 
     for (const pdfFile of pdfFiles) {
+      console.log(`[GovCyPdfHotelsService] downloading pdf filename=${pdfFile.filename}`);
       const datedDirectoryPath = join(
         storageDirectoryPath,
         this.resolveDatedDirectoryName(pdfFile),
@@ -103,17 +127,15 @@ export class GovCyPdfHotelsService {
 
       await mkdir(datedDirectoryPath, { recursive: true });
 
-      const response = await fetch(pdfFile.pdfUrl, {
-        method: 'GET',
-        signal: AbortSignal.timeout(this.config.downloadTimeoutMs),
+      const localPath = join(datedDirectoryPath, pdfFile.filename);
+
+      await this.govCyPdfDownloaderService.downloadPdfToPath({
+        pdfUrl: pdfFile.pdfUrl,
+        targetPath: localPath,
+        timeoutMs: this.config.downloadTimeoutMs,
       });
 
-      await this.assertOkResponse(response, `PDF download: ${pdfFile.pdfUrl}`);
-
-      const localPath = join(datedDirectoryPath, pdfFile.filename);
-      const fileBuffer = Buffer.from(await response.arrayBuffer());
-
-      await writeFile(localPath, fileBuffer);
+      console.log(`[GovCyPdfHotelsService] downloaded pdf filename=${pdfFile.filename} localPath=${localPath}`);
 
       downloadedPdfFiles.push({
         ...pdfFile,
@@ -132,15 +154,32 @@ export class GovCyPdfHotelsService {
     }
 
     const recognizedHotels: IRecognizedGovCyHotelRecord[] = [];
+    const systemPrompt = await this.getRequiredPrompt(PROMPT_TYPE.GOV_CY_PDF_PARSE_SYSTEM);
+    const userPrompt = await this.getRequiredPrompt(PROMPT_TYPE.GOV_CY_PDF_PARSE_USER);
 
     for (const downloadedPdfFile of downloadedPdfFiles) {
+      console.log(`[GovCyPdfHotelsService] uploading pdf to OpenAI filename=${downloadedPdfFile.filename}`);
       const openAiFileId = await this.uploadPdfFile(downloadedPdfFile);
-      const openAiEnvelope = await this.requestParsedHotels(openAiFileId);
+      console.log(
+        `[GovCyPdfHotelsService] uploaded pdf to OpenAI filename=${downloadedPdfFile.filename} fileId=${openAiFileId}`,
+      );
+
+      console.log(`[GovCyPdfHotelsService] requesting OpenAI parse filename=${downloadedPdfFile.filename}`);
+      const openAiEnvelope = await this.requestParsedHotels(
+        openAiFileId,
+        systemPrompt,
+        userPrompt,
+      );
+      console.log(
+        `[GovCyPdfHotelsService] OpenAI parse completed filename=${downloadedPdfFile.filename} hotels=${openAiEnvelope.hotels.length}`,
+      );
 
       for (const hotel of openAiEnvelope.hotels) {
         recognizedHotels.push({
           ...hotel,
+          address: this.normalizeOptionalText(hotel.address),
           createdAt: new Date(),
+          contacts: this.normalizeContacts(hotel.contacts),
           sourceFile: {
             filename: downloadedPdfFile.filename,
             localPath: downloadedPdfFile.localPath,
@@ -151,7 +190,209 @@ export class GovCyPdfHotelsService {
       }
     }
 
+    console.log(`[GovCyPdfHotelsService] parse phase completed, totalRecognizedHotels=${recognizedHotels.length}`);
+
     return recognizedHotels;
+  }
+
+  private normalizeContacts(contacts: IGovCyHotelContacts): IGovCyHotelContacts {
+    const emails = new Set<string>();
+    const websites: INormalizedWebsiteCandidate[] = [];
+
+    for (const email of contacts.emails) {
+      const normalizedEmail = this.normalizeEmail(email);
+
+      if (normalizedEmail !== null) {
+        emails.add(normalizedEmail);
+      }
+    }
+
+    for (const [index, website] of contacts.websites.entries()) {
+      const normalizedWebsiteCandidate = this.normalizeWebsiteCandidate(website, index);
+
+      if (normalizedWebsiteCandidate === null) {
+        continue;
+      }
+
+      if (normalizedWebsiteCandidate.email !== null) {
+        emails.add(normalizedWebsiteCandidate.email);
+      }
+
+      if (normalizedWebsiteCandidate.website !== null) {
+        websites.push(normalizedWebsiteCandidate);
+      }
+    }
+
+    const normalizedWebsites = this.normalizeWebsiteCandidates(websites);
+
+    return {
+      domain: this.deriveDomainFromWebsite(normalizedWebsites[0] ?? null),
+      emails: Array.from(emails),
+      faxes: this.normalizePhoneLikeValues(contacts.faxes),
+      phones: this.normalizePhoneLikeValues(contacts.phones),
+      websites: normalizedWebsites,
+    };
+  }
+
+  private normalizeWebsiteCandidates(
+    websites: INormalizedWebsiteCandidate[],
+  ): string[] {
+    const normalizedWebsiteCandidates = websites
+      .sort((left, right) => {
+        if (left.specificity !== right.specificity) {
+          return right.specificity - left.specificity;
+        }
+
+        return left.index - right.index;
+      });
+    const seenWebsites = new Set<string>();
+    const normalizedWebsites: string[] = [];
+
+    for (const normalizedWebsiteCandidate of normalizedWebsiteCandidates) {
+      if (
+        normalizedWebsiteCandidate.website === null
+        || seenWebsites.has(normalizedWebsiteCandidate.website)
+      ) {
+        continue;
+      }
+
+      seenWebsites.add(normalizedWebsiteCandidate.website);
+      normalizedWebsites.push(normalizedWebsiteCandidate.website);
+    }
+
+    return normalizedWebsites;
+  }
+
+  private normalizeWebsiteCandidate(
+    website: string,
+    index: number,
+  ): INormalizedWebsiteCandidate | null {
+    const compactWebsite = website.replace(/\s+/g, '').trim();
+
+    if (compactWebsite.length === 0) {
+      return null;
+    }
+
+    const normalizedEmail = this.normalizeEmail(
+      compactWebsite.replace(/^(https?:\/\/)?www\./i, ''),
+    );
+
+    if (normalizedEmail !== null) {
+      return {
+        email: normalizedEmail,
+        index,
+        specificity: 0,
+        website: null,
+      };
+    }
+
+    let normalizedWebsite = compactWebsite;
+
+    if (normalizedWebsite.startsWith('//')) {
+      normalizedWebsite = `https:${normalizedWebsite}`;
+    }
+
+    if (!/^[a-z][a-z0-9+.-]*:\/\//i.test(normalizedWebsite)) {
+      if (!this.looksLikeWebsiteWithoutScheme(normalizedWebsite)) {
+        return null;
+      }
+
+      normalizedWebsite = `https://${normalizedWebsite}`;
+    }
+
+    try {
+      const url = new URL(normalizedWebsite);
+
+      if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+        return null;
+      }
+
+      return {
+        email: null,
+        index,
+        specificity: this.getWebsiteSpecificity(url),
+        website: url.toString(),
+      };
+    } catch {
+      return null;
+    }
+  }
+
+  private looksLikeWebsiteWithoutScheme(value: string): boolean {
+    return (
+      value.includes('.')
+      && !value.startsWith('.')
+      && !value.endsWith('.')
+      && !value.includes('@')
+    );
+  }
+
+  private getWebsiteSpecificity(url: URL): number {
+    if (
+      url.pathname !== '/'
+      || url.search.length > 0
+      || url.hash.length > 0
+    ) {
+      return 1;
+    }
+
+    return 0;
+  }
+
+  private deriveDomainFromWebsite(website: string | null): string | null {
+    if (website === null) {
+      return null;
+    }
+
+    try {
+      const url = new URL(website);
+
+      return url.hostname.replace(/^www\./i, '').toLowerCase();
+    } catch {
+      return null;
+    }
+  }
+
+  private normalizeEmail(value: string): string | null {
+    const normalizedEmail = value.replace(/\s+/g, '').trim().toLowerCase();
+
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)) {
+      return null;
+    }
+
+    return normalizedEmail;
+  }
+
+  private normalizePhoneLikeValues(values: string[]): string[] {
+    const normalizedValues: string[] = [];
+    const seenValues = new Set<string>();
+
+    for (const value of values) {
+      const normalizedValue = value.replace(/\s+/g, ' ').trim();
+
+      if (normalizedValue.length === 0 || seenValues.has(normalizedValue)) {
+        continue;
+      }
+
+      seenValues.add(normalizedValue);
+      normalizedValues.push(normalizedValue);
+    }
+
+    return normalizedValues;
+  }
+
+  private normalizeOptionalText(value: string | null): string | null {
+    if (value === null) {
+      return null;
+    }
+
+    const normalizedValue = value.replace(/\s+/g, ' ').trim();
+
+    if (normalizedValue.length === 0) {
+      return null;
+    }
+
+    return normalizedValue;
   }
 
   private normalizeDiscoveredPdfFiles(
@@ -267,14 +508,17 @@ export class GovCyPdfHotelsService {
       }),
     );
 
-    const response = await fetch(OPENAI_FILES_URL, {
-      body: formData,
-      headers: {
-        Authorization: `Bearer ${openAiApiKey}`,
-      },
-      method: 'POST',
-      signal: AbortSignal.timeout(this.config.downloadTimeoutMs),
-    });
+    const response = await this.withOpenAiRetry(
+      `OpenAI file upload: ${downloadedPdfFile.filename}`,
+      async () => await fetch(OPENAI_FILES_URL, {
+        body: formData,
+        headers: {
+          Authorization: `Bearer ${openAiApiKey}`,
+        },
+        method: 'POST',
+        signal: AbortSignal.timeout(this.config.downloadTimeoutMs),
+      }),
+    );
 
     await this.assertOkResponse(response, `OpenAI file upload: ${downloadedPdfFile.filename}`);
 
@@ -283,55 +527,212 @@ export class GovCyPdfHotelsService {
     return body.id;
   }
 
-  private async requestParsedHotels(openAiFileId: string): Promise<IOpenAiHotelsEnvelope> {
+  private async requestParsedHotels(
+    openAiFileId: string,
+    systemPrompt: string,
+    userPrompt: string,
+  ): Promise<IOpenAiHotelsEnvelope> {
     const openAiApiKey = this.getRequiredConfigValue(this.config.openAiApiKey, 'OPENAI_API_KEY');
-    const response = await fetch(OPENAI_RESPONSES_URL, {
-      body: JSON.stringify({
-        input: [
-          {
-            content: OPENAI_PARSE_PDF_SYSTEM_PROMPT,
-            role: 'system',
+    const response = await this.withOpenAiRetry(
+      'OpenAI PDF parsing',
+      async () => await fetch(OPENAI_RESPONSES_URL, {
+        body: JSON.stringify({
+          background: true,
+          input: [
+            {
+              content: systemPrompt,
+              role: 'system',
+            },
+            {
+              content: [
+                {
+                  file_id: openAiFileId,
+                  type: 'input_file',
+                },
+                {
+                  text: userPrompt,
+                  type: 'input_text',
+                },
+              ],
+              role: 'user',
+            },
+          ],
+          model: this.config.openAiModel,
+          store: true,
+          temperature: 0,
+          text: {
+            format: {
+              name: 'gov_cy_hotels',
+              schema: OPENAI_PARSE_PDF_JSON_SCHEMA,
+              strict: true,
+              type: 'json_schema',
+            },
           },
-          {
-            content: [
-              {
-                file_id: openAiFileId,
-                type: 'input_file',
-              },
-              {
-                text: OPENAI_PARSE_PDF_USER_PROMPT,
-                type: 'input_text',
-              },
-            ],
-            role: 'user',
-          },
-        ],
-        model: this.config.openAiModel,
-        store: false,
-        temperature: 0,
-        text: {
-          format: {
-            name: 'gov_cy_hotels',
-            schema: OPENAI_PARSE_PDF_JSON_SCHEMA,
-            strict: true,
-            type: 'json_schema',
-          },
+        }),
+        headers: {
+          Authorization: `Bearer ${openAiApiKey}`,
+          'Content-Type': 'application/json',
         },
+        method: 'POST',
+        signal: AbortSignal.timeout(this.config.openAiResponsesTimeoutMs),
       }),
-      headers: {
-        Authorization: `Bearer ${openAiApiKey}`,
-        'Content-Type': 'application/json',
-      },
-      method: 'POST',
-      signal: AbortSignal.timeout(this.config.openAiResponsesTimeoutMs),
-    });
+    );
 
     await this.assertOkResponse(response, 'OpenAI PDF parsing');
 
     const body = await response.json() as IOpenAiResponse;
-    const outputText = this.extractOutputText(body);
+    const completedResponse = await this.waitForCompletedOpenAiResponse(body);
+    const outputText = this.extractOutputText(completedResponse);
 
     return JSON.parse(outputText) as IOpenAiHotelsEnvelope;
+  }
+
+  private async waitForCompletedOpenAiResponse(
+    openAiResponse: IOpenAiResponse,
+  ): Promise<IOpenAiResponse> {
+    if (!this.isOpenAiResponseInProgress(openAiResponse.status)) {
+      this.assertCompletedOpenAiResponse(openAiResponse);
+
+      return openAiResponse;
+    }
+
+    if (typeof openAiResponse.id !== 'string' || openAiResponse.id.length === 0) {
+      throw new Error('OpenAI background response did not contain id');
+    }
+
+    let currentResponse = openAiResponse;
+
+    while (this.isOpenAiResponseInProgress(currentResponse.status)) {
+      console.log(
+        `[GovCyPdfHotelsService] polling OpenAI response id=${openAiResponse.id} status=${currentResponse.status}`,
+      );
+
+      await this.delay(OPENAI_RESPONSES_POLL_INTERVAL_MS);
+
+      currentResponse = await this.retrieveOpenAiResponse(
+        openAiResponse.id,
+        this.config.openAiResponsesTimeoutMs,
+      );
+    }
+
+    this.assertCompletedOpenAiResponse(currentResponse);
+
+    return currentResponse;
+  }
+
+  private async retrieveOpenAiResponse(
+    responseId: string,
+    timeoutMs: number,
+  ): Promise<IOpenAiResponse> {
+    const openAiApiKey = this.getRequiredConfigValue(this.config.openAiApiKey, 'OPENAI_API_KEY');
+    const response = await this.withOpenAiRetry(
+      `OpenAI background response retrieve: ${responseId}`,
+      async () => await fetch(`${OPENAI_RESPONSES_URL}/${responseId}`, {
+        headers: {
+          Authorization: `Bearer ${openAiApiKey}`,
+          'Content-Type': 'application/json',
+        },
+        method: 'GET',
+        signal: AbortSignal.timeout(timeoutMs),
+      }),
+    );
+
+    await this.assertOkResponse(response, `OpenAI background response retrieve: ${responseId}`);
+
+    return await response.json() as IOpenAiResponse;
+  }
+
+  private isOpenAiResponseInProgress(status: string | undefined): boolean {
+    return status === 'queued' || status === 'in_progress';
+  }
+
+  private assertCompletedOpenAiResponse(openAiResponse: IOpenAiResponse): void {
+    if (openAiResponse.status === undefined || openAiResponse.status === 'completed') {
+      return;
+    }
+
+    const errorMessage = openAiResponse.error?.message ?? openAiResponse.incomplete_details?.reason;
+
+    if (errorMessage !== undefined) {
+      throw new Error(`OpenAI PDF parsing finished with status ${openAiResponse.status}: ${errorMessage}`);
+    }
+
+    throw new Error(`OpenAI PDF parsing finished with status ${openAiResponse.status}`);
+  }
+
+  private async delay(timeoutMs: number): Promise<void> {
+    await new Promise((resolve) => {
+      setTimeout(resolve, timeoutMs);
+    });
+  }
+
+  private async withOpenAiRetry<T>(
+    context: string,
+    operation: () => Promise<T>,
+  ): Promise<T> {
+    for (let attempt = 1; attempt <= OPENAI_REQUEST_MAX_ATTEMPTS; attempt += 1) {
+      try {
+        return await operation();
+      } catch (error) {
+        if (
+          !this.isTransientOpenAiRequestError(error)
+          || attempt === OPENAI_REQUEST_MAX_ATTEMPTS
+        ) {
+          throw error;
+        }
+
+        const nextAttempt = attempt + 1;
+
+        console.log(
+          `[GovCyPdfHotelsService] retrying ${context} after transient error, nextAttempt=${nextAttempt}/${OPENAI_REQUEST_MAX_ATTEMPTS}`,
+        );
+
+        await this.delay(OPENAI_REQUEST_RETRY_DELAY_MS);
+      }
+    }
+
+    throw new Error(`${context} retry loop exited unexpectedly`);
+  }
+
+  private isTransientOpenAiRequestError(error: unknown): boolean {
+    if (!(error instanceof Error)) {
+      return false;
+    }
+
+    const normalizedMessage = error.message.toLowerCase();
+
+    if (normalizedMessage.includes('fetch failed')) {
+      return true;
+    }
+
+    const cause = Reflect.get(error, 'cause');
+
+    if (typeof cause !== 'object' || cause === null) {
+      return false;
+    }
+
+    const code = Reflect.get(cause, 'code');
+
+    if (typeof code !== 'string') {
+      return false;
+    }
+
+    return (
+      code === 'UND_ERR_HEADERS_TIMEOUT'
+      || code === 'UND_ERR_CONNECT_TIMEOUT'
+      || code === 'ECONNRESET'
+      || code === 'ETIMEDOUT'
+    );
+  }
+
+  private async getRequiredPrompt(type: PROMPT_TYPE): Promise<string> {
+    const prompt = await this.promptsService.readLatestByType(type);
+
+    if (prompt == null) {
+      throw new Error(`Prompt not found for type: ${type}`);
+    }
+
+    return prompt.content;
   }
 
   private extractOutputText(openAiResponse: IOpenAiResponse): string {

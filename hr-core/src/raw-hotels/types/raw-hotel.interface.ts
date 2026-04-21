@@ -1,14 +1,13 @@
-import { Document } from 'mongoose';
 import { IRawHotelContacts } from './raw-hotel-contacts.interface';
 import { IRawHotelSourceFile } from './raw-hotel-source-file.interface';
 
-export interface IRawHotel extends Document {
+export interface IRawHotel {
   address: string | null;
-  beds: number;
+  beds: number | null;
   classRaw: string | null;
   contacts: IRawHotelContacts;
   createdAt: Date;
-  establishmentType: string;
+  establishmentType: string | null;
   licenseStatus: string;
   locality: string | null;
   managerName: string | null;
@@ -17,7 +16,7 @@ export interface IRawHotel extends Document {
   operatorName: string | null;
   postcode: string | null;
   region: string | null;
-  rooms: number;
+  rooms: number | null;
   sourceFile: IRawHotelSourceFile;
   stars: number | null;
   updatedAt: Date;

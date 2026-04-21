@@ -71,6 +71,7 @@ In this mode:
 - `PDF_STORAGE_DIRECTORY_PATH`
 - `PDF_DOWNLOAD_TIMEOUT_MS`
 - `OPENAI_RESPONSES_TIMEOUT_MS`
+- `GOV_CY_PDF_PARSING_CACHE_TIME_MS`
 
 `.env.example` contains examples for all of them.
 
@@ -125,4 +126,5 @@ docker compose ps
 - `hr-core-green` is exposed on host port `3002`.
 - MongoDB is exposed on host port `27777`.
 - `PDF_STORAGE_DIRECTORY_PATH` should point to a writable path inside the container. The default `/opt/hr-core/data/files` is inside the mounted `./hr-core` workspace, so the application can create directories and write downloaded PDFs there.
+- `GOV_CY_PDF_PARSING_CACHE_TIME_MS` controls the in-memory cache TTL for `POST /gov-cy-pdf-hotels/parse`. The default value is `43200000` milliseconds.
 - On module startup, `hr-core` checks Apify and OpenAI availability. If Apify is unavailable, if the OpenAI key/model is unavailable, or if OpenAI reports insufficient quota, the service logs the error and exits with code `1`.

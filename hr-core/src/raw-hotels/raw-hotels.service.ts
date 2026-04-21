@@ -32,6 +32,24 @@ export class RawHotelsService {
     }).exec();
   }
 
+  async readManyBySourceFileNamesAndCreatedAtFrom(
+    sourceFileNames: string[],
+    createdAtFrom: Date,
+  ): Promise<IRawHotel[]> {
+    if (sourceFileNames.length === 0) {
+      return [];
+    }
+
+    return this.rawHotelModel.find({
+      'sourceFile.filename': {
+        $in: sourceFileNames,
+      },
+      createdAt: {
+        $gte: createdAtFrom,
+      },
+    }).exec();
+  }
+
   async deleteManyBySourceFileNames(sourceFileNames: string[]): Promise<number> {
     if (sourceFileNames.length === 0) {
       return 0;

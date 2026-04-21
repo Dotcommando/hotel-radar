@@ -63,7 +63,8 @@ export const rawHotelSchema = new Schema<IRawHotel>(
       type: String,
     },
     beds: {
-      required: true,
+      default: null,
+      required: false,
       type: Number,
     },
     classRaw: {
@@ -81,7 +82,8 @@ export const rawHotelSchema = new Schema<IRawHotel>(
       type: Date,
     },
     establishmentType: {
-      required: true,
+      default: null,
+      required: false,
       type: String,
     },
     licenseStatus: {
@@ -122,7 +124,8 @@ export const rawHotelSchema = new Schema<IRawHotel>(
       type: String,
     },
     rooms: {
-      required: true,
+      default: null,
+      required: false,
       type: Number,
     },
     sourceFile: {

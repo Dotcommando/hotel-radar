@@ -8,6 +8,11 @@ export const GOV_CY_PDF_DOC_TYPE = 'gov_list';
 export const DEFAULT_DOWNLOAD_TIMEOUT_MS = 90000;
 
 export const DEFAULT_OPENAI_RESPONSES_TIMEOUT_MS = 360000;
+export const OPENAI_RESPONSES_POLL_INTERVAL_MS = 5000;
+export const OPENAI_REQUEST_MAX_ATTEMPTS = 3;
+export const OPENAI_REQUEST_RETRY_DELAY_MS = 1000;
+
+export const DEFAULT_GOV_CY_PDF_PARSING_CACHE_TIME_MS = 43200000;
 
 export const DEFAULT_STORAGE_DIRECTORY_PATH = `${process.cwd()}/data/files`;
 
