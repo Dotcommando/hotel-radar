@@ -96,10 +96,15 @@ export class GovCyPdfHotelsService {
     const body = await response.json() as IApifyPdfLinksItem[];
 
     const normalizedPdfFiles = this.normalizeDiscoveredPdfFiles(body);
+    const primaryPdfFiles = normalizedPdfFiles.filter(({ filename }) => this.isPrimaryPdfFile(filename));
+    const fallbackPdfFiles = normalizedPdfFiles.filter(({ filename }) => this.isFallbackPdfFile(filename));
+    const selectedPdfFiles = primaryPdfFiles.length > 0 ? primaryPdfFiles : fallbackPdfFiles;
 
-    console.log(`[GovCyPdfHotelsService] normalized discovered pdf files=${normalizedPdfFiles.length}`);
+    console.log(
+      `[GovCyPdfHotelsService] normalized discovered pdf files=${normalizedPdfFiles.length} primaryPdfFiles=${primaryPdfFiles.length} fallbackPdfFiles=${fallbackPdfFiles.length} selectedPdfFiles=${selectedPdfFiles.length}`,
+    );
 
-    return normalizedPdfFiles;
+    return selectedPdfFiles;
   }
 
   async ensureStorageDirectoryIsWritable(): Promise<string> {
@@ -411,11 +416,10 @@ export class GovCyPdfHotelsService {
           continue;
         }
 
-        const filename = decodeURIComponent(basename(pdfUrl).split('?')[0] ?? '');
-        const filenameLower = filename.toLowerCase();
+        const filename = decodeURIComponent(basename(pdfUrl).split('?')[0] ?? '').trim();
         const filenameUpper = filename.toUpperCase();
 
-        if (this.shouldIgnorePdfFile(filenameLower) || !this.isGovHotelsList(filenameUpper)) {
+        if (!this.isSupportedPdfFile(filename)) {
           continue;
         }
 
@@ -436,27 +440,56 @@ export class GovCyPdfHotelsService {
   }
 
   private normalizePdfUrl(pdfLink: string): string | null {
-    if (pdfLink.length === 0) {
+    const normalizedPdfLink = pdfLink.trim();
+
+    if (normalizedPdfLink.length === 0) {
       return null;
     }
 
-    if (/^https?:\/\//i.test(pdfLink)) {
-      return pdfLink;
+    if (/^https?:\/\//i.test(normalizedPdfLink)) {
+      return normalizedPdfLink;
     }
 
-    if (pdfLink.startsWith('/')) {
-      return `https://www.gov.cy${pdfLink}`;
+    if (normalizedPdfLink.startsWith('/')) {
+      return `https://www.gov.cy${normalizedPdfLink}`;
     }
 
-    return `https://www.gov.cy/${pdfLink}`;
+    return `https://www.gov.cy/${normalizedPdfLink}`;
   }
 
   private shouldIgnorePdfFile(filenameLower: string): boolean {
     return /(pet[^a-z0-9]*friendly|vegan[^a-z0-9]*friendly)/i.test(filenameLower);
   }
 
-  private isGovHotelsList(filenameUpper: string): boolean {
-    return filenameUpper.includes('_HOTELS_') || filenameUpper.startsWith('HOTELS_');
+  private isSupportedPdfFile(filename: string): boolean {
+    return this.isPrimaryPdfFile(filename) || this.isFallbackPdfFile(filename);
+  }
+
+  private isPrimaryPdfFile(filename: string): boolean {
+    const normalizedFilename = this.normalizeFilenameForMatching(filename);
+
+    return (
+      !this.shouldIgnorePdfFile(normalizedFilename)
+      && normalizedFilename.includes('pancyprian')
+    );
+  }
+
+  private isFallbackPdfFile(filename: string): boolean {
+    const normalizedFilename = this.normalizeFilenameForMatching(filename);
+
+    return (
+      !this.shouldIgnorePdfFile(normalizedFilename)
+      && !normalizedFilename.includes('pancyprian')
+      && this.isGovHotelsList(normalizedFilename)
+    );
+  }
+
+  private isGovHotelsList(normalizedFilename: string): boolean {
+    return normalizedFilename.includes('_hotels_') || normalizedFilename.startsWith('hotels_');
+  }
+
+  private normalizeFilenameForMatching(filename: string): string {
+    return filename.trim().toLowerCase();
   }
 
   private parsePublishedAtFromFilename(filename: string): string | null {

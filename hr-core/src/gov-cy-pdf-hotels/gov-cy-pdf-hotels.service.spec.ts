@@ -151,7 +151,7 @@ describe('GovCyPdfHotelsService', () => {
     jest.useRealTimers();
   });
 
-  it('discovers and normalizes hotel pdf links via Apify', async () => {
+  it('discovers fallback hotel pdf links via Apify when no pancyprian file is present', async () => {
     jest.mocked(global.fetch)
       .mockResolvedValueOnce({
         json: async () => [
@@ -206,6 +206,37 @@ describe('GovCyPdfHotelsService', () => {
         pdfUrl: 'https://www.gov.cy/app/uploads/sites/26/2026/02/HOTELS_LARNAKA_1.3.2026.pdf',
         publishedAt: '2026-03-01T00:00:00.000Z',
         region: 'LARNAKA',
+      },
+    ]);
+  });
+
+  it('prefers only pancyprian pdf links when they are present', async () => {
+    jest.mocked(global.fetch)
+      .mockResolvedValueOnce({
+        json: async () => [
+          {
+            pdfLinks: [
+              '/app/uploads/sites/26/2026/04/HOTELS_LARNAKA_8.4.2026.pdf',
+              '  /app/uploads/sites/26/2026/04/HOTELS_PANCYPRIAN_8.4.2026.pdf  ',
+              '/app/uploads/sites/26/2026/04/Hotels_Pancyprian_Pet-Friendly_8.4.2026.pdf',
+              '/app/uploads/sites/26/2026/04/Hotels_Pancyprian_Vegan-Friendly_8.4.2026.pdf',
+            ],
+          },
+        ],
+        ok: true,
+        status: 201,
+      });
+
+    const result = await service.discoverPdfFiles();
+
+    expect(result).toEqual([
+      {
+        collectedAt: '2026-04-21T08:00:00.000Z',
+        docType: 'gov_list',
+        filename: 'HOTELS_PANCYPRIAN_8.4.2026.pdf',
+        pdfUrl: 'https://www.gov.cy/app/uploads/sites/26/2026/04/HOTELS_PANCYPRIAN_8.4.2026.pdf',
+        publishedAt: '2026-04-08T00:00:00.000Z',
+        region: 'PANCYPRIAN',
       },
     ]);
   });
