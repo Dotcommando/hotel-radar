@@ -2,6 +2,7 @@ import { constants } from 'node:fs';
 import * as fsPromises from 'node:fs/promises';
 import { join } from 'node:path';
 import { Test, TestingModule } from '@nestjs/testing';
+import { PDFDocument } from 'pdf-lib';
 import { GOV_CY_PDF_HOTELS_CONFIG } from './constants/gov-cy-pdf-hotels-config.constant';
 import { PDF_DISCOVERY_PAGE_FUNCTION } from './constants/pdf-discovery-page-function.constant';
 import { PDF_DOWNLOAD_METHOD } from './constants/pdf-download-method.constant';
@@ -20,6 +21,7 @@ jest.mock('node:fs/promises', () => ({
   chmod: jest.fn(),
   mkdir: jest.fn(),
   readFile: jest.fn(),
+  unlink: jest.fn(),
   writeFile: jest.fn(),
 }));
 
@@ -37,6 +39,16 @@ function createFetchFailedError(code: string): TypeError {
       code,
     },
   });
+}
+
+async function buildPdfBuffer(pageCount: number): Promise<Buffer> {
+  const pdfDocument = await PDFDocument.create();
+
+  for (let pageIndex = 0; pageIndex < pageCount; pageIndex += 1) {
+    pdfDocument.addPage([595, 842]);
+  }
+
+  return Buffer.from(await pdfDocument.save());
 }
 
 describe('GovCyPdfHotelsService', () => {
@@ -113,6 +125,7 @@ describe('GovCyPdfHotelsService', () => {
   const accessMock = jest.mocked(fsPromises.access);
   const writeFileMock = jest.mocked(fsPromises.writeFile);
   const readFileMock = jest.mocked(fsPromises.readFile);
+  const unlinkMock = jest.mocked(fsPromises.unlink);
 
   beforeEach(async () => {
     jest.clearAllMocks();
@@ -374,6 +387,174 @@ describe('GovCyPdfHotelsService', () => {
         background: true,
         store: true,
       }),
+    );
+    expect(result).toEqual([
+      {
+        ...recognizedHotelFixture,
+        createdAt: new Date('2026-04-21T08:00:00.000Z'),
+      },
+    ]);
+  });
+
+  it('splits large pdf files into overlapping chunks before parsing', async () => {
+    const largePdfBytes = await buildPdfBuffer(9);
+    const fileBytesByPath = new Map<string, Buffer>([
+      [downloadedPdfFileFixture.localPath, largePdfBytes],
+    ]);
+
+    readFileMock.mockImplementation(async (filePath) => {
+      const fileBytes = fileBytesByPath.get(String(filePath));
+
+      if (fileBytes === undefined) {
+        throw new Error(`Unexpected readFile path: ${String(filePath)}`);
+      }
+
+      return fileBytes;
+    });
+    writeFileMock.mockImplementation(async (filePath, fileBytes) => {
+      fileBytesByPath.set(String(filePath), Buffer.from(fileBytes as Uint8Array));
+    });
+    unlinkMock.mockResolvedValue(undefined);
+    promptsService.readLatestByType
+      .mockResolvedValueOnce({
+        content: 'System prompt from db',
+        createdAt: new Date('2026-04-21T00:00:00.000Z'),
+        type: PROMPT_TYPE.GOV_CY_PDF_PARSE_SYSTEM,
+        updatedAt: new Date('2026-04-21T00:00:00.000Z'),
+        version: 1,
+      })
+      .mockResolvedValueOnce({
+        content: 'User prompt from db',
+        createdAt: new Date('2026-04-21T00:00:00.000Z'),
+        type: PROMPT_TYPE.GOV_CY_PDF_PARSE_USER,
+        updatedAt: new Date('2026-04-21T00:00:00.000Z'),
+        version: 1,
+      });
+    jest.mocked(global.fetch)
+      .mockResolvedValueOnce({
+        json: async () => ({ id: 'file_1' }),
+        ok: true,
+        status: 200,
+      })
+      .mockResolvedValueOnce({
+        json: async () => ({
+          id: 'resp_1',
+          status: 'completed',
+          output: [
+            {
+              content: [
+                {
+                  text: JSON.stringify({
+                    hotels: [
+                      {
+                        address: recognizedHotelFixture.address,
+                        beds: recognizedHotelFixture.beds,
+                        classRaw: recognizedHotelFixture.classRaw,
+                        contacts: {
+                          domain: recognizedHotelFixture.contacts.domain,
+                          emails: recognizedHotelFixture.contacts.emails,
+                          faxes: recognizedHotelFixture.contacts.faxes,
+                          phones: recognizedHotelFixture.contacts.phones,
+                          websites: ['www.anassa.com'],
+                        },
+                        establishmentType: recognizedHotelFixture.establishmentType,
+                        licenseStatus: recognizedHotelFixture.licenseStatus,
+                        locality: recognizedHotelFixture.locality,
+                        managerName: recognizedHotelFixture.managerName,
+                        name: recognizedHotelFixture.name,
+                        nameNormalized: recognizedHotelFixture.nameNormalized,
+                        operatorName: recognizedHotelFixture.operatorName,
+                        postcode: recognizedHotelFixture.postcode,
+                        region: recognizedHotelFixture.region,
+                        rooms: recognizedHotelFixture.rooms,
+                        stars: recognizedHotelFixture.stars,
+                        updatedAt: '2026-02-20T00:00:00.000Z',
+                      },
+                    ],
+                  }),
+                  type: 'output_text',
+                },
+              ],
+            },
+          ],
+        }),
+        ok: true,
+        status: 200,
+      })
+      .mockResolvedValueOnce({
+        json: async () => ({ id: 'file_2' }),
+        ok: true,
+        status: 200,
+      })
+      .mockResolvedValueOnce({
+        json: async () => ({
+          id: 'resp_2',
+          status: 'completed',
+          output: [
+            {
+              content: [
+                {
+                  text: JSON.stringify({
+                    hotels: [
+                      {
+                        address: recognizedHotelFixture.address,
+                        beds: recognizedHotelFixture.beds,
+                        classRaw: recognizedHotelFixture.classRaw,
+                        contacts: {
+                          domain: recognizedHotelFixture.contacts.domain,
+                          emails: recognizedHotelFixture.contacts.emails,
+                          faxes: recognizedHotelFixture.contacts.faxes,
+                          phones: recognizedHotelFixture.contacts.phones,
+                          websites: ['www.anassa.com'],
+                        },
+                        establishmentType: recognizedHotelFixture.establishmentType,
+                        licenseStatus: recognizedHotelFixture.licenseStatus,
+                        locality: recognizedHotelFixture.locality,
+                        managerName: recognizedHotelFixture.managerName,
+                        name: recognizedHotelFixture.name,
+                        nameNormalized: recognizedHotelFixture.nameNormalized,
+                        operatorName: recognizedHotelFixture.operatorName,
+                        postcode: recognizedHotelFixture.postcode,
+                        region: recognizedHotelFixture.region,
+                        rooms: recognizedHotelFixture.rooms,
+                        stars: recognizedHotelFixture.stars,
+                        updatedAt: '2026-02-20T00:00:00.000Z',
+                      },
+                    ],
+                  }),
+                  type: 'output_text',
+                },
+              ],
+            },
+          ],
+        }),
+        ok: true,
+        status: 200,
+      });
+
+    const onParsedBatch = jest.fn<Promise<void>, [IRecognizedGovCyHotelRecord[]]>().mockResolvedValue();
+
+    const result = await service.parsePdfFiles([downloadedPdfFileFixture], onParsedBatch);
+
+    expect(writeFileMock).toHaveBeenCalledTimes(2);
+    expect(Array.from(fileBytesByPath.keys())).toEqual(
+      expect.arrayContaining([
+        '/tmp/hr-core-pdf-files/2026-02-16/POLIS_HOTELS_16.2.2026.pages-1-5.pdf',
+        '/tmp/hr-core-pdf-files/2026-02-16/POLIS_HOTELS_16.2.2026.pages-5-9.pdf',
+      ]),
+    );
+    expect(readFileMock).toHaveBeenCalledWith(
+      '/tmp/hr-core-pdf-files/2026-02-16/POLIS_HOTELS_16.2.2026.pages-1-5.pdf',
+    );
+    expect(readFileMock).toHaveBeenCalledWith(
+      '/tmp/hr-core-pdf-files/2026-02-16/POLIS_HOTELS_16.2.2026.pages-5-9.pdf',
+    );
+    expect(onParsedBatch).toHaveBeenCalledTimes(2);
+    expect(unlinkMock).toHaveBeenCalledWith(
+      '/tmp/hr-core-pdf-files/2026-02-16/POLIS_HOTELS_16.2.2026.pages-1-5.pdf',
+    );
+    expect(unlinkMock).toHaveBeenCalledWith(
+      '/tmp/hr-core-pdf-files/2026-02-16/POLIS_HOTELS_16.2.2026.pages-5-9.pdf',
     );
     expect(result).toEqual([
       {

@@ -15,10 +15,13 @@ describe('RunGovCyPdfParsingUseCase', () => {
   let govCyPdfHotelsService: {
     discoverPdfFiles: jest.Mock<Promise<IDiscoveredGovCyPdfFile[]>, []>;
     downloadPdfFiles: jest.Mock<Promise<IDownloadedGovCyPdfFile[]>, [IDiscoveredGovCyPdfFile[]]>;
-    parsePdfFiles: jest.Mock<Promise<IRecognizedGovCyHotelRecord[]>, [IDownloadedGovCyPdfFile[]]>;
+    parsePdfFiles: jest.Mock<
+      Promise<IRecognizedGovCyHotelRecord[]>,
+      [IDownloadedGovCyPdfFile[], (((parsedHotels: IRecognizedGovCyHotelRecord[]) => Promise<void>) | undefined)?]
+    >;
   };
   let rawHotelsService: {
-    createMany: jest.Mock<Promise<IRecognizedGovCyHotelRecord[]>, [IRecognizedGovCyHotelRecord[]]>;
+    upsertManyByNameNormalizedAndSourceFileName: jest.Mock<Promise<number>, [IRecognizedGovCyHotelRecord[]]>;
   };
   let parsedFilesService: {
     createMany: jest.Mock<Promise<IParsedFile[]>, [IParsedFile[]]>;
@@ -90,7 +93,7 @@ describe('RunGovCyPdfParsingUseCase', () => {
       parsePdfFiles: jest.fn(),
     };
     rawHotelsService = {
-      createMany: jest.fn(),
+      upsertManyByNameNormalizedAndSourceFileName: jest.fn(),
     };
     parsedFilesService = {
       createMany: jest.fn(),
@@ -130,8 +133,12 @@ describe('RunGovCyPdfParsingUseCase', () => {
     govCyPdfHotelsService.discoverPdfFiles.mockResolvedValue([discoveredPdfFileFixture]);
     parsedFilesService.readManyByFileNamesAndParsedAtFrom.mockResolvedValue([]);
     govCyPdfHotelsService.downloadPdfFiles.mockResolvedValue([downloadedPdfFileFixture]);
-    govCyPdfHotelsService.parsePdfFiles.mockResolvedValue([recognizedHotelFixture]);
-    rawHotelsService.createMany.mockResolvedValue([recognizedHotelFixture]);
+    govCyPdfHotelsService.parsePdfFiles.mockImplementation(async (_downloadedPdfFiles, onParsedBatch) => {
+      await onParsedBatch?.([recognizedHotelFixture]);
+
+      return [recognizedHotelFixture];
+    });
+    rawHotelsService.upsertManyByNameNormalizedAndSourceFileName.mockResolvedValue(1);
     parsedFilesService.createMany.mockResolvedValue([
       {
         filename: discoveredPdfFileFixture.filename,
@@ -147,8 +154,13 @@ describe('RunGovCyPdfParsingUseCase', () => {
       new Date('2026-04-21T07:59:00.000Z'),
     );
     expect(govCyPdfHotelsService.downloadPdfFiles).toHaveBeenCalledWith([discoveredPdfFileFixture]);
-    expect(govCyPdfHotelsService.parsePdfFiles).toHaveBeenCalledWith([downloadedPdfFileFixture]);
-    expect(rawHotelsService.createMany).toHaveBeenCalledWith([recognizedHotelFixture]);
+    expect(govCyPdfHotelsService.parsePdfFiles).toHaveBeenCalledWith(
+      [downloadedPdfFileFixture],
+      expect.any(Function),
+    );
+    expect(rawHotelsService.upsertManyByNameNormalizedAndSourceFileName).toHaveBeenCalledWith([
+      recognizedHotelFixture,
+    ]);
     expect(parsedFilesService.createMany).toHaveBeenCalledWith([
       {
         filename: discoveredPdfFileFixture.filename,
@@ -180,7 +192,7 @@ describe('RunGovCyPdfParsingUseCase', () => {
 
     expect(govCyPdfHotelsService.downloadPdfFiles).not.toHaveBeenCalled();
     expect(govCyPdfHotelsService.parsePdfFiles).not.toHaveBeenCalled();
-    expect(rawHotelsService.createMany).not.toHaveBeenCalled();
+    expect(rawHotelsService.upsertManyByNameNormalizedAndSourceFileName).not.toHaveBeenCalled();
     expect(parsedFilesService.createMany).not.toHaveBeenCalled();
     expect(result).toEqual({
       files: [
@@ -226,8 +238,12 @@ describe('RunGovCyPdfParsingUseCase', () => {
       },
     ]);
     govCyPdfHotelsService.downloadPdfFiles.mockResolvedValue([secondDownloadedPdfFileFixture]);
-    govCyPdfHotelsService.parsePdfFiles.mockResolvedValue([secondRecognizedHotelFixture]);
-    rawHotelsService.createMany.mockResolvedValue([secondRecognizedHotelFixture]);
+    govCyPdfHotelsService.parsePdfFiles.mockImplementation(async (_downloadedPdfFiles, onParsedBatch) => {
+      await onParsedBatch?.([secondRecognizedHotelFixture]);
+
+      return [secondRecognizedHotelFixture];
+    });
+    rawHotelsService.upsertManyByNameNormalizedAndSourceFileName.mockResolvedValue(1);
     parsedFilesService.createMany.mockResolvedValue([
       {
         filename: secondDiscoveredPdfFileFixture.filename,
@@ -266,7 +282,7 @@ describe('RunGovCyPdfParsingUseCase', () => {
     parsedFilesService.readManyByFileNamesAndParsedAtFrom.mockResolvedValue([]);
     govCyPdfHotelsService.downloadPdfFiles.mockResolvedValue([downloadedPdfFileFixture]);
     govCyPdfHotelsService.parsePdfFiles.mockReturnValue(parsingPromise);
-    rawHotelsService.createMany.mockResolvedValue([recognizedHotelFixture]);
+    rawHotelsService.upsertManyByNameNormalizedAndSourceFileName.mockResolvedValue(1);
     parsedFilesService.createMany.mockResolvedValue([
       {
         filename: discoveredPdfFileFixture.filename,

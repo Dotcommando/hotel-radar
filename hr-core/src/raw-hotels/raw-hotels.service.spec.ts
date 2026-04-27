@@ -9,6 +9,10 @@ interface IInsertManyOptions {
   ordered?: boolean;
 }
 
+interface IBulkWriteOptions {
+  ordered?: boolean;
+}
+
 interface IDeleteManyResult {
   deletedCount?: number;
 }
@@ -18,6 +22,7 @@ interface IExecable<TResult> {
 }
 
 interface IRawHotelModelMock {
+  bulkWrite: jest.Mock<Promise<unknown>, [Array<Record<string, unknown>>, IBulkWriteOptions]>;
   insertMany: jest.Mock<Promise<IRawHotel[]>, [ICreateRawHotel[], IInsertManyOptions]>;
   find: jest.Mock<IExecable<IRawHotel[]>, [Record<string, unknown>]>;
   deleteMany: jest.Mock<IExecable<IDeleteManyResult>, [Record<string, unknown>]>;
@@ -60,6 +65,7 @@ describe('RawHotelsService', () => {
 
   beforeEach(async () => {
     rawHotelModel = {
+      bulkWrite: jest.fn(),
       deleteMany: jest.fn(),
       find: jest.fn(),
       insertMany: jest.fn(),
@@ -94,6 +100,59 @@ describe('RawHotelsService', () => {
 
     expect(rawHotelModel.insertMany).not.toHaveBeenCalled();
     expect(result).toEqual([]);
+  });
+
+  it('upserts many raw hotels by source file name and normalized name', async () => {
+    rawHotelModel.bulkWrite.mockResolvedValue({});
+
+    const result = await service.upsertManyByNameNormalizedAndSourceFileName([rawHotelFixture]);
+
+    expect(rawHotelModel.bulkWrite).toHaveBeenCalledWith(
+      [
+        {
+          updateOne: {
+            filter: {
+              'sourceFile.filename': rawHotelFixture.sourceFile.filename,
+              nameNormalized: rawHotelFixture.nameNormalized,
+            },
+            update: {
+              $set: {
+                address: rawHotelFixture.address,
+                beds: rawHotelFixture.beds,
+                classRaw: rawHotelFixture.classRaw,
+                contacts: rawHotelFixture.contacts,
+                establishmentType: rawHotelFixture.establishmentType,
+                licenseStatus: rawHotelFixture.licenseStatus,
+                locality: rawHotelFixture.locality,
+                managerName: rawHotelFixture.managerName,
+                name: rawHotelFixture.name,
+                nameNormalized: rawHotelFixture.nameNormalized,
+                operatorName: rawHotelFixture.operatorName,
+                postcode: rawHotelFixture.postcode,
+                region: rawHotelFixture.region,
+                rooms: rawHotelFixture.rooms,
+                sourceFile: rawHotelFixture.sourceFile,
+                stars: rawHotelFixture.stars,
+                updatedAt: rawHotelFixture.updatedAt,
+              },
+              $setOnInsert: {
+                createdAt: rawHotelFixture.createdAt,
+              },
+            },
+            upsert: true,
+          },
+        },
+      ],
+      { ordered: true },
+    );
+    expect(result).toBe(1);
+  });
+
+  it('returns zero when upsertManyByNameNormalizedAndSourceFileName receives no records', async () => {
+    const result = await service.upsertManyByNameNormalizedAndSourceFileName([]);
+
+    expect(rawHotelModel.bulkWrite).not.toHaveBeenCalled();
+    expect(result).toBe(0);
   });
 
   it('reads many raw hotels by source file names', async () => {

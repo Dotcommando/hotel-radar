@@ -4,9 +4,17 @@ import {
   chmod,
   mkdir,
   readFile,
+  unlink,
+  writeFile,
 } from 'node:fs/promises';
 import { Inject, Injectable } from '@nestjs/common';
-import { basename, join } from 'node:path';
+import { PDFDocument } from 'pdf-lib';
+import {
+  basename,
+  dirname,
+  extname,
+  join,
+} from 'node:path';
 import { PROMPT_TYPE } from '../prompts/constants/prompt-type.enum';
 import { PromptsService } from '../prompts/prompts.service';
 import { GOV_CY_PDF_HOTELS_CONFIG } from './constants/gov-cy-pdf-hotels-config.constant';
@@ -20,6 +28,11 @@ import {
   OPENAI_RESPONSES_URL,
 } from './constants/gov-cy-pdf-hotels.constants';
 import {
+  MAX_PDF_PAGES_WITHOUT_CHUNKING,
+  PDF_CHUNK_OVERLAP_PAGES,
+  PDF_CHUNK_SIZE_PAGES,
+} from './constants/pdf-chunking.constants';
+import {
   OPENAI_PARSE_PDF_JSON_SCHEMA,
 } from './constants/openai-parse-pdf.constants';
 import { PDF_DISCOVERY_PAGE_FUNCTION } from './constants/pdf-discovery-page-function.constant';
@@ -30,7 +43,9 @@ import { IDiscoveredGovCyPdfFile } from './types/discovered-gov-cy-pdf-file.inte
 import { IOpenAiFileUploadResponse } from './types/openai-file-upload-response.interface';
 import { IOpenAiHotelsEnvelope } from './types/openai-hotels-envelope.interface';
 import { IOpenAiResponse } from './types/openai-response.interface';
+import { IGovCyHotelSourceFile } from './types/gov-cy-hotel-source-file.interface';
 import { IGovCyHotelContacts } from './types/gov-cy-hotel-contacts.interface';
+import { IGovCyPdfParseChunk } from './types/gov-cy-pdf-parse-chunk.interface';
 import { IRecognizedGovCyHotelRecord } from './types/recognized-gov-cy-hotel-record.interface';
 import type { IGovCyPdfHotelsConfig } from './types/gov-cy-pdf-hotels-config.interface';
 
@@ -153,51 +168,110 @@ export class GovCyPdfHotelsService {
 
   async parsePdfFiles(
     downloadedPdfFiles: IDownloadedGovCyPdfFile[],
+    onParsedBatch?: (parsedHotels: IRecognizedGovCyHotelRecord[]) => Promise<void>,
   ): Promise<IRecognizedGovCyHotelRecord[]> {
     if (downloadedPdfFiles.length === 0) {
       return [];
     }
 
-    const recognizedHotels: IRecognizedGovCyHotelRecord[] = [];
+    const recognizedHotelsMap = new Map<string, IRecognizedGovCyHotelRecord>();
     const systemPrompt = await this.getRequiredPrompt(PROMPT_TYPE.GOV_CY_PDF_PARSE_SYSTEM);
     const userPrompt = await this.getRequiredPrompt(PROMPT_TYPE.GOV_CY_PDF_PARSE_USER);
 
     for (const downloadedPdfFile of downloadedPdfFiles) {
-      console.log(`[GovCyPdfHotelsService] uploading pdf to OpenAI filename=${downloadedPdfFile.filename}`);
-      const openAiFileId = await this.uploadPdfFile(downloadedPdfFile);
+      const parseChunks = await this.buildPdfParseChunks(downloadedPdfFile);
+
       console.log(
-        `[GovCyPdfHotelsService] uploaded pdf to OpenAI filename=${downloadedPdfFile.filename} fileId=${openAiFileId}`,
+        `[GovCyPdfHotelsService] prepared parse chunks filename=${downloadedPdfFile.filename} chunks=${parseChunks.length}`,
       );
 
-      console.log(`[GovCyPdfHotelsService] requesting OpenAI parse filename=${downloadedPdfFile.filename}`);
-      const openAiEnvelope = await this.requestParsedHotels(
-        openAiFileId,
-        systemPrompt,
-        userPrompt,
-      );
-      console.log(
-        `[GovCyPdfHotelsService] OpenAI parse completed filename=${downloadedPdfFile.filename} hotels=${openAiEnvelope.hotels.length}`,
-      );
+      try {
+        for (const parseChunk of parseChunks) {
+          console.log(
+            `[GovCyPdfHotelsService] uploading pdf to OpenAI filename=${parseChunk.sourceFile.filename} chunk=${parseChunk.chunkIndex}/${parseChunk.chunkTotal} pages=${parseChunk.pageFrom}-${parseChunk.pageTo}`,
+          );
+          const openAiFileId = await this.uploadPdfFile(parseChunk);
+          console.log(
+            `[GovCyPdfHotelsService] uploaded pdf to OpenAI filename=${parseChunk.sourceFile.filename} chunk=${parseChunk.chunkIndex}/${parseChunk.chunkTotal} fileId=${openAiFileId}`,
+          );
 
-      for (const hotel of openAiEnvelope.hotels) {
-        recognizedHotels.push({
-          ...hotel,
-          address: this.normalizeOptionalText(hotel.address),
-          createdAt: new Date(),
-          contacts: this.normalizeContacts(hotel.contacts),
-          sourceFile: {
-            filename: downloadedPdfFile.filename,
-            localPath: downloadedPdfFile.localPath,
-            pdfUrl: downloadedPdfFile.pdfUrl,
-          },
-          updatedAt: new Date(hotel.updatedAt),
-        });
+          console.log(
+            `[GovCyPdfHotelsService] requesting OpenAI parse filename=${parseChunk.sourceFile.filename} chunk=${parseChunk.chunkIndex}/${parseChunk.chunkTotal} pages=${parseChunk.pageFrom}-${parseChunk.pageTo}`,
+          );
+          const openAiEnvelope = await this.requestParsedHotels(
+            openAiFileId,
+            systemPrompt,
+            userPrompt,
+          );
+          console.log(
+            `[GovCyPdfHotelsService] OpenAI parse completed filename=${parseChunk.sourceFile.filename} chunk=${parseChunk.chunkIndex}/${parseChunk.chunkTotal} hotels=${openAiEnvelope.hotels.length}`,
+          );
+
+          const parsedHotels = this.normalizeRecognizedHotels(
+            openAiEnvelope.hotels,
+            parseChunk.sourceFile,
+          );
+          const deduplicatedParsedHotels = this.deduplicateRecognizedHotels(parsedHotels);
+
+          if (
+            onParsedBatch !== undefined
+            && deduplicatedParsedHotels.length > 0
+          ) {
+            await onParsedBatch(deduplicatedParsedHotels);
+          }
+
+          for (const recognizedHotel of deduplicatedParsedHotels) {
+            recognizedHotelsMap.set(
+              this.buildRecognizedHotelKey(recognizedHotel),
+              recognizedHotel,
+            );
+          }
+        }
+      } finally {
+        await this.cleanupTemporaryPdfChunks(parseChunks);
       }
     }
+
+    const recognizedHotels = Array.from(recognizedHotelsMap.values());
 
     console.log(`[GovCyPdfHotelsService] parse phase completed, totalRecognizedHotels=${recognizedHotels.length}`);
 
     return recognizedHotels;
+  }
+
+  private normalizeRecognizedHotels(
+    hotels: IOpenAiHotelsEnvelope['hotels'],
+    sourceFile: IGovCyHotelSourceFile,
+  ): IRecognizedGovCyHotelRecord[] {
+    const recognizedHotels: IRecognizedGovCyHotelRecord[] = [];
+
+    for (const hotel of hotels) {
+      recognizedHotels.push({
+        ...hotel,
+        address: this.normalizeOptionalText(hotel.address),
+        createdAt: new Date(),
+        contacts: this.normalizeContacts(hotel.contacts),
+        sourceFile,
+        updatedAt: new Date(hotel.updatedAt),
+      });
+    }
+
+    return recognizedHotels;
+  }
+
+  private deduplicateRecognizedHotels(
+    recognizedHotels: IRecognizedGovCyHotelRecord[],
+  ): IRecognizedGovCyHotelRecord[] {
+    const deduplicatedRecognizedHotels = new Map<string, IRecognizedGovCyHotelRecord>();
+
+    for (const recognizedHotel of recognizedHotels) {
+      deduplicatedRecognizedHotels.set(
+        this.buildRecognizedHotelKey(recognizedHotel),
+        recognizedHotel,
+      );
+    }
+
+    return Array.from(deduplicatedRecognizedHotels.values());
   }
 
   private normalizeContacts(contacts: IGovCyHotelContacts): IGovCyHotelContacts {
@@ -528,21 +602,166 @@ export class GovCyPdfHotelsService {
     return datedValue.slice(0, 10);
   }
 
-  private async uploadPdfFile(downloadedPdfFile: IDownloadedGovCyPdfFile): Promise<string> {
+  private async buildPdfParseChunks(
+    downloadedPdfFile: IDownloadedGovCyPdfFile,
+  ): Promise<IGovCyPdfParseChunk[]> {
+    const pdfFileBytes = await readFile(downloadedPdfFile.localPath);
+    const sourceFile: IGovCyHotelSourceFile = {
+      filename: downloadedPdfFile.filename,
+      localPath: downloadedPdfFile.localPath,
+      pdfUrl: downloadedPdfFile.pdfUrl,
+    };
+    let sourcePdfDocument: PDFDocument;
+
+    try {
+      sourcePdfDocument = await PDFDocument.load(pdfFileBytes);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+
+      console.warn(
+        `[GovCyPdfHotelsService] failed to read PDF page count filename=${downloadedPdfFile.filename} error=${message}; falling back to unchunked parsing`,
+      );
+
+      return [
+        {
+          chunkIndex: 1,
+          chunkTotal: 1,
+          pageFrom: 1,
+          pageTo: 1,
+          sourceFile,
+          uploadFilename: downloadedPdfFile.filename,
+          uploadLocalPath: downloadedPdfFile.localPath,
+        },
+      ];
+    }
+
+    const pageCount = sourcePdfDocument.getPageCount();
+
+    if (pageCount <= MAX_PDF_PAGES_WITHOUT_CHUNKING) {
+      return [
+        {
+          chunkIndex: 1,
+          chunkTotal: 1,
+          pageFrom: 1,
+          pageTo: pageCount,
+          sourceFile,
+          uploadFilename: downloadedPdfFile.filename,
+          uploadLocalPath: downloadedPdfFile.localPath,
+        },
+      ];
+    }
+
+    const pageRanges = this.buildPdfChunkPageRanges(pageCount);
+    const parseChunks: IGovCyPdfParseChunk[] = [];
+
+    for (const [index, pageRange] of pageRanges.entries()) {
+      const uploadFilename = this.buildPdfChunkFilename(
+        downloadedPdfFile.filename,
+        pageRange.pageFrom,
+        pageRange.pageTo,
+      );
+      const uploadLocalPath = join(dirname(downloadedPdfFile.localPath), uploadFilename);
+      const chunkPdfDocument = await PDFDocument.create();
+      const sourcePages = await chunkPdfDocument.copyPages(
+        sourcePdfDocument,
+        this.buildChunkPageIndexes(pageRange.pageFrom, pageRange.pageTo),
+      );
+
+      for (const sourcePage of sourcePages) {
+        chunkPdfDocument.addPage(sourcePage);
+      }
+
+      await writeFile(uploadLocalPath, Buffer.from(await chunkPdfDocument.save()));
+
+      parseChunks.push({
+        chunkIndex: index + 1,
+        chunkTotal: pageRanges.length,
+        pageFrom: pageRange.pageFrom,
+        pageTo: pageRange.pageTo,
+        sourceFile,
+        uploadFilename,
+        uploadLocalPath,
+      });
+    }
+
+    return parseChunks;
+  }
+
+  private buildPdfChunkPageRanges(
+    pageCount: number,
+  ): Array<{ pageFrom: number; pageTo: number }> {
+    const pageRanges: Array<{ pageFrom: number; pageTo: number }> = [];
+    const pageStep = PDF_CHUNK_SIZE_PAGES - PDF_CHUNK_OVERLAP_PAGES;
+    let pageFrom = 1;
+
+    while (pageFrom <= pageCount) {
+      const pageTo = Math.min(pageFrom + PDF_CHUNK_SIZE_PAGES - 1, pageCount);
+
+      pageRanges.push({
+        pageFrom,
+        pageTo,
+      });
+
+      if (pageTo === pageCount) {
+        break;
+      }
+
+      pageFrom += pageStep;
+    }
+
+    return pageRanges;
+  }
+
+  private buildChunkPageIndexes(pageFrom: number, pageTo: number): number[] {
+    const pageIndexes: number[] = [];
+
+    for (let pageNumber = pageFrom; pageNumber <= pageTo; pageNumber += 1) {
+      pageIndexes.push(pageNumber - 1);
+    }
+
+    return pageIndexes;
+  }
+
+  private buildPdfChunkFilename(
+    filename: string,
+    pageFrom: number,
+    pageTo: number,
+  ): string {
+    const filenameExtension = extname(filename);
+    const filenameWithoutExtension = filename.slice(0, filename.length - filenameExtension.length);
+
+    return `${filenameWithoutExtension}.pages-${pageFrom}-${pageTo}${filenameExtension}`;
+  }
+
+  private async cleanupTemporaryPdfChunks(parseChunks: IGovCyPdfParseChunk[]): Promise<void> {
+    for (const parseChunk of parseChunks) {
+      if (parseChunk.uploadLocalPath === parseChunk.sourceFile.localPath) {
+        continue;
+      }
+
+      await unlink(parseChunk.uploadLocalPath).catch(() => undefined);
+    }
+  }
+
+  private buildRecognizedHotelKey(recognizedHotel: IRecognizedGovCyHotelRecord): string {
+    return `${recognizedHotel.sourceFile.filename}::${recognizedHotel.nameNormalized}`;
+  }
+
+  private async uploadPdfFile(parseChunk: IGovCyPdfParseChunk): Promise<string> {
     const openAiApiKey = this.getRequiredConfigValue(this.config.openAiApiKey, 'OPENAI_API_KEY');
-    const fileBuffer = await readFile(downloadedPdfFile.localPath);
+    const fileBuffer = await readFile(parseChunk.uploadLocalPath);
     const formData = new FormData();
 
     formData.set('purpose', 'user_data');
     formData.set(
       'file',
-      new File([fileBuffer], downloadedPdfFile.filename, {
+      new File([fileBuffer], parseChunk.uploadFilename, {
         type: 'application/pdf',
       }),
     );
 
     const response = await this.withOpenAiRetry(
-      `OpenAI file upload: ${downloadedPdfFile.filename}`,
+      `OpenAI file upload: ${parseChunk.uploadFilename}`,
       async () => await fetch(OPENAI_FILES_URL, {
         body: formData,
         headers: {
@@ -553,7 +772,7 @@ export class GovCyPdfHotelsService {
       }),
     );
 
-    await this.assertOkResponse(response, `OpenAI file upload: ${downloadedPdfFile.filename}`);
+    await this.assertOkResponse(response, `OpenAI file upload: ${parseChunk.uploadFilename}`);
 
     const body = await response.json() as IOpenAiFileUploadResponse;
 

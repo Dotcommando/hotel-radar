@@ -20,6 +20,42 @@ export class RawHotelsService {
     return this.rawHotelModel.insertMany(rawHotels, { ordered: true });
   }
 
+  async upsertManyByNameNormalizedAndSourceFileName(
+    rawHotels: ICreateRawHotel[],
+  ): Promise<number> {
+    if (rawHotels.length === 0) {
+      return 0;
+    }
+
+    await this.rawHotelModel.bulkWrite(
+      rawHotels.map((rawHotel) => {
+        const {
+          createdAt,
+          ...rawHotelFields
+        } = rawHotel;
+
+        return {
+          updateOne: {
+            filter: {
+              'sourceFile.filename': rawHotel.sourceFile.filename,
+              nameNormalized: rawHotel.nameNormalized,
+            },
+            update: {
+              $set: rawHotelFields,
+              $setOnInsert: {
+                createdAt: createdAt ?? new Date(),
+              },
+            },
+            upsert: true,
+          },
+        };
+      }),
+      { ordered: true },
+    );
+
+    return rawHotels.length;
+  }
+
   async readManyBySourceFileNames(sourceFileNames: string[]): Promise<IRawHotel[]> {
     if (sourceFileNames.length === 0) {
       return [];

@@ -64,12 +64,16 @@ export class RunGovCyPdfParsingUseCase {
       const downloadedPdfFiles = await this.govCyPdfHotelsService.downloadPdfFiles([
         discoveredPdfFile,
       ]);
-      const parsedRecords = await this.govCyPdfHotelsService.parsePdfFiles(downloadedPdfFiles);
+      const parsedRecords = await this.govCyPdfHotelsService.parsePdfFiles(
+        downloadedPdfFiles,
+        async (parsedBatch) => {
+          await this.rawHotelsService.upsertManyByNameNormalizedAndSourceFileName(parsedBatch);
+        },
+      );
 
       console.log(
         `[RunGovCyPdfParsingUseCase] saving parsed file filename=${discoveredPdfFile.filename} records=${parsedRecords.length}`,
       );
-      await this.rawHotelsService.createMany(parsedRecords);
       await this.parsedFilesService.createMany([
         {
           filename: discoveredPdfFile.filename,

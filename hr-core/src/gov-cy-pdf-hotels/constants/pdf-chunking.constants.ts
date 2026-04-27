@@ -1,0 +1,3 @@
+export const MAX_PDF_PAGES_WITHOUT_CHUNKING = 8;
+export const PDF_CHUNK_SIZE_PAGES = 5;
+export const PDF_CHUNK_OVERLAP_PAGES = 1;
