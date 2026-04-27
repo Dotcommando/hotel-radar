@@ -12,6 +12,7 @@ export interface IRawHotel {
   locality: string | null;
   managerName: string | null;
   name: string;
+  nameMatchKey?: string;
   nameNormalized: string;
   operatorName: string | null;
   postcode: string | null;
@@ -19,5 +20,6 @@ export interface IRawHotel {
   rooms: number | null;
   sourceFile: IRawHotelSourceFile;
   stars: number | null;
+  strictHotelDedupeKey?: string;
   updatedAt: Date;
 }

@@ -104,6 +104,10 @@ export const rawHotelSchema = new Schema<IRawHotel>(
       required: true,
       type: String,
     },
+    nameMatchKey: {
+      required: false,
+      type: String,
+    },
     nameNormalized: {
       required: true,
       type: String,
@@ -136,6 +140,10 @@ export const rawHotelSchema = new Schema<IRawHotel>(
       default: null,
       required: false,
       type: Number,
+    },
+    strictHotelDedupeKey: {
+      required: false,
+      type: String,
     },
     updatedAt: {
       default: (): Date => new Date(),

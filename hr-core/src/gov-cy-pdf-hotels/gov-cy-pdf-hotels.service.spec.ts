@@ -1063,7 +1063,7 @@ describe('GovCyPdfHotelsService', () => {
         locality: 'Anogyra',
         managerName: 'Mr Nicos Makrides',
         name: 'NICOLAS & MARIA\'S COTTAGE',
-        nameNormalized: 'NICOLAS & MARIA\'S COTTAGE',
+        nameNormalized: 'NICOLAS AND MARIA\'S COTTAGE',
         operatorName: 'Mr Nicos Makrides',
         postcode: '4603',
         region: 'LIMASSOL',

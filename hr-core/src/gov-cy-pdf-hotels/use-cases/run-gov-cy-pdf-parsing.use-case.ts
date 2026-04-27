@@ -67,7 +67,7 @@ export class RunGovCyPdfParsingUseCase {
       const parsedRecords = await this.govCyPdfHotelsService.parsePdfFiles(
         downloadedPdfFiles,
         async (parsedBatch) => {
-          await this.rawHotelsService.upsertManyByNameNormalizedAndSourceFileName(parsedBatch);
+          await this.rawHotelsService.upsertManyByStrictHotelDedupeKeyAndSourceFileName(parsedBatch);
         },
       );
 

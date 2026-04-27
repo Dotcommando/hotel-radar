@@ -48,6 +48,11 @@ import { IGovCyHotelContacts } from './types/gov-cy-hotel-contacts.interface';
 import { IGovCyPdfParseChunk } from './types/gov-cy-pdf-parse-chunk.interface';
 import { IRecognizedGovCyHotelRecord } from './types/recognized-gov-cy-hotel-record.interface';
 import type { IGovCyPdfHotelsConfig } from './types/gov-cy-pdf-hotels-config.interface';
+import {
+  makeSoftHotelDuplicateCandidateKey,
+  makeStrictHotelDedupeKey,
+  normalizeHotelName,
+} from '../raw-hotels/utils/hotel-identity.util';
 
 interface INormalizedWebsiteCandidate {
   email: string | null;
@@ -180,6 +185,7 @@ export class GovCyPdfHotelsService {
 
     for (const downloadedPdfFile of downloadedPdfFiles) {
       const parseChunks = await this.buildPdfParseChunks(downloadedPdfFile);
+      const softDuplicateCandidateKeysMap = new Map<string, string>();
 
       console.log(
         `[GovCyPdfHotelsService] prepared parse chunks filename=${downloadedPdfFile.filename} chunks=${parseChunks.length}`,
@@ -221,6 +227,10 @@ export class GovCyPdfHotelsService {
           }
 
           for (const recognizedHotel of deduplicatedParsedHotels) {
+            this.logSuspiciousOverlapDuplicate(
+              softDuplicateCandidateKeysMap,
+              recognizedHotel,
+            );
             recognizedHotelsMap.set(
               this.buildRecognizedHotelKey(recognizedHotel),
               recognizedHotel,
@@ -246,11 +256,14 @@ export class GovCyPdfHotelsService {
     const recognizedHotels: IRecognizedGovCyHotelRecord[] = [];
 
     for (const hotel of hotels) {
+      const nameNormalized = normalizeHotelName(hotel.name);
+
       recognizedHotels.push({
         ...hotel,
         address: this.normalizeOptionalText(hotel.address),
         createdAt: new Date(),
         contacts: this.normalizeContacts(hotel.contacts),
+        nameNormalized,
         sourceFile,
         updatedAt: new Date(hotel.updatedAt),
       });
@@ -744,7 +757,27 @@ export class GovCyPdfHotelsService {
   }
 
   private buildRecognizedHotelKey(recognizedHotel: IRecognizedGovCyHotelRecord): string {
-    return `${recognizedHotel.sourceFile.filename}::${recognizedHotel.nameNormalized}`;
+    return `${recognizedHotel.sourceFile.filename}::${makeStrictHotelDedupeKey(recognizedHotel)}`;
+  }
+
+  private logSuspiciousOverlapDuplicate(
+    softDuplicateCandidateKeysMap: Map<string, string>,
+    recognizedHotel: IRecognizedGovCyHotelRecord,
+  ): void {
+    const softDuplicateCandidateKey = makeSoftHotelDuplicateCandidateKey(recognizedHotel);
+    const strictHotelDedupeKey = this.buildRecognizedHotelKey(recognizedHotel);
+    const existingStrictHotelDedupeKey = softDuplicateCandidateKeysMap.get(softDuplicateCandidateKey);
+
+    if (
+      existingStrictHotelDedupeKey !== undefined
+      && existingStrictHotelDedupeKey !== strictHotelDedupeKey
+    ) {
+      console.warn(
+        `[GovCyPdfHotelsService] suspicious overlap duplicate detected filename=${recognizedHotel.sourceFile.filename} softKey=${softDuplicateCandidateKey} currentKey=${strictHotelDedupeKey} existingKey=${existingStrictHotelDedupeKey}`,
+      );
+    }
+
+    softDuplicateCandidateKeysMap.set(softDuplicateCandidateKey, strictHotelDedupeKey);
   }
 
   private async uploadPdfFile(parseChunk: IGovCyPdfParseChunk): Promise<string> {

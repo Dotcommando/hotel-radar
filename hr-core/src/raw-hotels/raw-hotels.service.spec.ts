@@ -4,6 +4,11 @@ import { RawHotelsService } from './raw-hotels.service';
 import { RAW_HOTEL_MODEL_NAME } from './constants/raw-hotel-model-name.constant';
 import { ICreateRawHotel } from './types/create-raw-hotel.interface';
 import { IRawHotel } from './types/raw-hotel.interface';
+import {
+  makeNameMatchKey,
+  makeStrictHotelDedupeKey,
+  normalizeHotelName,
+} from './utils/hotel-identity.util';
 
 interface IInsertManyOptions {
   ordered?: boolean;
@@ -91,7 +96,20 @@ describe('RawHotelsService', () => {
 
     const result = await service.createMany(rawHotels);
 
-    expect(rawHotelModel.insertMany).toHaveBeenCalledWith(rawHotels, { ordered: true });
+    expect(rawHotelModel.insertMany).toHaveBeenCalledWith([
+      {
+        ...rawHotelFixture,
+        nameMatchKey: makeNameMatchKey(normalizeHotelName(rawHotelFixture.name)),
+        nameNormalized: normalizeHotelName(rawHotelFixture.name),
+        strictHotelDedupeKey: makeStrictHotelDedupeKey({
+          beds: rawHotelFixture.beds,
+          contacts: rawHotelFixture.contacts,
+          nameNormalized: normalizeHotelName(rawHotelFixture.name),
+          postcode: rawHotelFixture.postcode,
+          rooms: rawHotelFixture.rooms,
+        }),
+      },
+    ], { ordered: true });
     expect(result).toEqual([rawHotelFixture]);
   });
 
@@ -102,10 +120,20 @@ describe('RawHotelsService', () => {
     expect(result).toEqual([]);
   });
 
-  it('upserts many raw hotels by source file name and normalized name', async () => {
+  it('upserts many raw hotels by source file name and strict dedupe key', async () => {
     rawHotelModel.bulkWrite.mockResolvedValue({});
 
-    const result = await service.upsertManyByNameNormalizedAndSourceFileName([rawHotelFixture]);
+    const result = await service.upsertManyByStrictHotelDedupeKeyAndSourceFileName([rawHotelFixture]);
+
+    const nameNormalized = normalizeHotelName(rawHotelFixture.name);
+    const nameMatchKey = makeNameMatchKey(nameNormalized);
+    const strictHotelDedupeKey = makeStrictHotelDedupeKey({
+      beds: rawHotelFixture.beds,
+      contacts: rawHotelFixture.contacts,
+      nameNormalized,
+      postcode: rawHotelFixture.postcode,
+      rooms: rawHotelFixture.rooms,
+    });
 
     expect(rawHotelModel.bulkWrite).toHaveBeenCalledWith(
       [
@@ -113,7 +141,7 @@ describe('RawHotelsService', () => {
           updateOne: {
             filter: {
               'sourceFile.filename': rawHotelFixture.sourceFile.filename,
-              nameNormalized: rawHotelFixture.nameNormalized,
+              strictHotelDedupeKey,
             },
             update: {
               $set: {
@@ -126,13 +154,15 @@ describe('RawHotelsService', () => {
                 locality: rawHotelFixture.locality,
                 managerName: rawHotelFixture.managerName,
                 name: rawHotelFixture.name,
-                nameNormalized: rawHotelFixture.nameNormalized,
+                nameMatchKey,
+                nameNormalized,
                 operatorName: rawHotelFixture.operatorName,
                 postcode: rawHotelFixture.postcode,
                 region: rawHotelFixture.region,
                 rooms: rawHotelFixture.rooms,
                 sourceFile: rawHotelFixture.sourceFile,
                 stars: rawHotelFixture.stars,
+                strictHotelDedupeKey,
                 updatedAt: rawHotelFixture.updatedAt,
               },
               $setOnInsert: {
@@ -148,8 +178,8 @@ describe('RawHotelsService', () => {
     expect(result).toBe(1);
   });
 
-  it('returns zero when upsertManyByNameNormalizedAndSourceFileName receives no records', async () => {
-    const result = await service.upsertManyByNameNormalizedAndSourceFileName([]);
+  it('returns zero when upsertManyByStrictHotelDedupeKeyAndSourceFileName receives no records', async () => {
+    const result = await service.upsertManyByStrictHotelDedupeKeyAndSourceFileName([]);
 
     expect(rawHotelModel.bulkWrite).not.toHaveBeenCalled();
     expect(result).toBe(0);
