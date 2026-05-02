@@ -219,6 +219,92 @@ export class HotelRegistryEntriesService {
     return entries;
   }
 
+  async readSafeCanonicalCandidateGroup(
+    entry: IHotelRegistryEntry,
+  ): Promise<IHotelRegistryEntry[]> {
+    const numericSuffixGroup = await this.readSafeNumericSuffixGroup(entry);
+
+    if (numericSuffixGroup.length > 1) {
+      return numericSuffixGroup;
+    }
+
+    const sameNameEntries = await this.hotelRegistryEntryModel
+      .find({
+        'name.normalized': entry.name.normalized,
+        'processing.status': {
+          $in: [
+            HOTEL_PROCESSING_STATUS.PENDING,
+            HOTEL_PROCESSING_STATUS.CLAIMED,
+          ],
+        },
+        status: HOTEL_REGISTRY_ENTRY_STATUS.READY,
+      })
+      .sort({
+        _id: 1,
+      })
+      .exec();
+
+    if (
+      this.isSafeSameNameMultiTypeGroup(sameNameEntries) ||
+      this.isSafeSameNameSameTypeCollapseGroup(sameNameEntries)
+    ) {
+      return sameNameEntries;
+    }
+
+    return [entry];
+  }
+
+  async hasCompatibleNumericSuffixGroup(
+    entry: IHotelRegistryEntry,
+  ): Promise<boolean> {
+    if (
+      entry.status !== HOTEL_REGISTRY_ENTRY_STATUS.READY ||
+      entry.name.suffix !== null ||
+      entry.name.baseName.trim().length === 0 ||
+      entry.location.postcode === null ||
+      this.isEmptyContacts(entry.contacts)
+    ) {
+      return false;
+    }
+
+    const sibling = await this.hotelRegistryEntryModel
+      .exists({
+        $or: [
+          {
+            'contacts.domains': {
+              $in: entry.contacts.domains,
+            },
+          },
+          {
+            'contacts.emails': {
+              $in: entry.contacts.emails,
+            },
+          },
+          {
+            'contacts.phones': {
+              $in: entry.contacts.phones,
+            },
+          },
+        ],
+        'location.postcode': entry.location.postcode,
+        'name.baseName': entry.name.baseName,
+        'name.suffix': {
+          $regex: '^\\d+[A-Z]?$',
+        },
+        'processing.status': {
+          $in: [
+            HOTEL_PROCESSING_STATUS.PENDING,
+            HOTEL_PROCESSING_STATUS.CLAIMED,
+            HOTEL_PROCESSING_STATUS.PROCESSED,
+          ],
+        },
+        status: HOTEL_REGISTRY_ENTRY_STATUS.READY,
+      })
+      .exec();
+
+    return sibling !== null;
+  }
+
   async markProcessed(
     registryEntryId: Types.ObjectId,
     canonicalHotelCandidateId: Types.ObjectId,
@@ -331,6 +417,185 @@ export class HotelRegistryEntriesService {
       contacts.phones.length === 0 &&
       contacts.websites.length === 0
     );
+  }
+
+  private isSafeSameNameMultiTypeGroup(
+    entries: IHotelRegistryEntry[],
+  ): boolean {
+    if (
+      entries.length < 2
+        || !this.hasOneNormalizedName(entries)
+    ) {
+      return false;
+    }
+
+    const establishmentTypes = new Set(
+      entries.map(({ establishmentType }) => establishmentType),
+    );
+
+    return (
+      establishmentTypes.size > 1
+        && this.allEntriesHaveStrongContactOverlap(entries)
+        && this.allEntriesHaveCompatibleLocation(entries)
+    );
+  }
+
+  private isSafeSameNameSameTypeCollapseGroup(
+    entries: IHotelRegistryEntry[],
+  ): boolean {
+    if (
+      entries.length < 2
+        || !this.hasOneNormalizedName(entries)
+    ) {
+      return false;
+    }
+
+    const establishmentTypes = new Set(
+      entries.map(({ establishmentType }) => establishmentType),
+    );
+
+    return (
+      establishmentTypes.size === 1
+        && this.allEntriesHaveStrongContactOverlap(entries)
+        && this.allEntriesHaveCompatibleLocation(entries)
+        && this.hasCompatibleCapacityForCollapse(entries)
+    );
+  }
+
+  private hasOneNormalizedName(entries: IHotelRegistryEntry[]): boolean {
+    const firstName = entries[0].name.normalized;
+
+    return entries.every(({ name }) => name.normalized === firstName);
+  }
+
+  private allEntriesHaveStrongContactOverlap(
+    entries: IHotelRegistryEntry[],
+  ): boolean {
+    const firstEntry = entries[0];
+
+    return entries.every((entry) =>
+      this.hasStrongContactOverlap(firstEntry, entry),
+    );
+  }
+
+  private hasStrongContactOverlap(
+    left: IHotelRegistryEntry,
+    right: IHotelRegistryEntry,
+  ): boolean {
+    return (
+      this.hasArrayOverlap(left.contacts.phones, right.contacts.phones)
+        || this.hasArrayOverlap(left.contacts.emails, right.contacts.emails)
+        || this.hasArrayOverlap(left.contacts.domains, right.contacts.domains)
+    );
+  }
+
+  private allEntriesHaveCompatibleLocation(
+    entries: IHotelRegistryEntry[],
+  ): boolean {
+    const firstEntry = entries[0];
+
+    return entries.every((entry) =>
+      this.hasCompatibleLocation(firstEntry, entry),
+    );
+  }
+
+  private hasCompatibleLocation(
+    left: IHotelRegistryEntry,
+    right: IHotelRegistryEntry,
+  ): boolean {
+    return (
+      this.hasSameNonEmptyValue(
+        left.location.postcode,
+        right.location.postcode,
+      )
+        || this.hasCompatibleAddress(
+          left.location.address,
+          right.location.address,
+        )
+        || (this.hasSameNonEmptyValue(
+          left.location.locality,
+          right.location.locality,
+        )
+          && this.hasSameNonEmptyValue(
+            left.location.district,
+            right.location.district,
+          )
+          && this.buildContactsKey(left.contacts) ===
+            this.buildContactsKey(right.contacts))
+    );
+  }
+
+  private hasCompatibleCapacityForCollapse(
+    entries: IHotelRegistryEntry[],
+  ): boolean {
+    const firstEntry = entries[0];
+
+    return entries.every((entry) => {
+      if (
+        firstEntry.capacity.rooms !== null &&
+        entry.capacity.rooms !== null &&
+        firstEntry.capacity.rooms !== entry.capacity.rooms
+      ) {
+        return false;
+      }
+
+      if (
+        firstEntry.capacity.beds !== null &&
+        entry.capacity.beds !== null &&
+        Math.abs(firstEntry.capacity.beds - entry.capacity.beds) > 10
+      ) {
+        return false;
+      }
+
+      return true;
+    });
+  }
+
+  private hasSameNonEmptyValue(
+    left: string | null,
+    right: string | null,
+  ): boolean {
+    return (
+      left !== null
+        && right !== null
+        && normalizeRegistryText(left) === normalizeRegistryText(right)
+    );
+  }
+
+  private hasCompatibleAddress(
+    left: string | null,
+    right: string | null,
+  ): boolean {
+    const normalizedLeft = normalizeRegistryText(left);
+    const normalizedRight = normalizeRegistryText(right);
+
+    if (
+      normalizedLeft.length === 0
+        || normalizedRight.length === 0
+    ) {
+      return false;
+    }
+
+    return (
+      normalizedLeft === normalizedRight
+        || normalizedLeft.includes(normalizedRight)
+        || normalizedRight.includes(normalizedLeft)
+    );
+  }
+
+  private buildContactsKey(contacts: IHotelContacts): string {
+    return [
+      contacts.domains.slice().sort().join(','),
+      contacts.emails.slice().sort().join(','),
+      contacts.phones.slice().sort().join(','),
+      contacts.websites.slice().sort().join(','),
+    ].join('|');
+  }
+
+  private hasArrayOverlap(left: string[], right: string[]): boolean {
+    const rightValues = new Set(right);
+
+    return left.some((value) => rightValues.has(value));
   }
 
   private buildRegistryEntryFields(

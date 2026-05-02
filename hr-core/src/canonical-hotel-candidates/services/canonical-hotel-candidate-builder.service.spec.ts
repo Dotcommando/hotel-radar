@@ -203,4 +203,257 @@ describe('CanonicalHotelCandidateBuilderService', () => {
     expect(result.candidateKey).toBe('ccv1|single|tsokkos-gardens-hotel');
     expect(result.kind).toBe(CANONICAL_HOTEL_KIND.SINGLE_PROPERTY);
   });
+
+  it('groups same-name multi-type entries with matching contacts into a property complex', () => {
+    const hotelEntry = buildRegistryEntry({
+      capacity: {
+        beds: 266,
+        rooms: 133,
+      },
+      contacts: {
+        domains: ['nissianahotel.com'],
+        emails: ['nissianahotel@cytanet.com.cy'],
+        phones: ['+35723725800'],
+        websites: ['https://www.nissianahotel.com/'],
+      },
+      establishmentType: 'HOTELS',
+      location: {
+        address: '98, Nissi Avenue',
+        district: 'AGIA NAPA',
+        locality: 'Agia Napa',
+        postcode: '5330',
+      },
+      name: {
+        baseName: 'NISSIANA',
+        normalized: 'NISSIANA',
+        original: 'NISSIANA',
+        suffix: null,
+      },
+      operator: 'Panayides Bros (Nissi) Ltd',
+      registryKey: 'nissiana-hotel',
+    });
+    const apartmentsEntry = buildRegistryEntry({
+      capacity: {
+        beds: 52,
+        rooms: 21,
+      },
+      contacts: {
+        domains: ['nissianahotel.com'],
+        emails: ['nissianahotel@cytanet.com.cy'],
+        phones: ['+35723725800'],
+        websites: ['https://www.nissianahotel.com/'],
+      },
+      establishmentType: 'HOTEL APARTMENTS',
+      location: {
+        address: '98, Nissi Avenue',
+        district: 'AGIA NAPA',
+        locality: 'Agia Napa',
+        postcode: null,
+      },
+      name: {
+        baseName: 'NISSIANA',
+        normalized: 'NISSIANA',
+        original: 'NISSIANA',
+        suffix: null,
+      },
+      operator: 'Panayides Bros (Nissi) Ltd',
+      registryKey: 'nissiana-apartments',
+    });
+
+    const result = service.buildFromRegistryEntries([
+      apartmentsEntry,
+      hotelEntry,
+    ]);
+
+    expect(result.kind).toBe(CANONICAL_HOTEL_KIND.PROPERTY_COMPLEX);
+    expect(result.build).toEqual({
+      issues: [],
+      rule: 'same_name_multi_type_same_contacts',
+      ruleVersion: 1,
+    });
+    expect(result.capacity).toEqual({
+      beds: 318,
+      mode: CANONICAL_HOTEL_CAPACITY_MODE.SUM_COMPONENTS,
+      rooms: 154,
+    });
+    expect(result.location).toEqual(hotelEntry.location);
+    expect(result.components).toHaveLength(2);
+  });
+
+  it('groups same-name multi-type entries when operators differ but contacts and location match', () => {
+    const hotelEntry = buildRegistryEntry({
+      contacts: {
+        domains: ['paphiessa.com'],
+        emails: ['info@paphiessa.com'],
+        phones: ['+35726945555'],
+        websites: ['https://www.paphiessa.com/'],
+      },
+      establishmentType: 'HOTELS',
+      location: {
+        address: '2, Agios Filonas Street',
+        district: 'PAFOS',
+        locality: 'Pafos',
+        postcode: '8049',
+      },
+      name: {
+        baseName: 'PAPHIESSA',
+        normalized: 'PAPHIESSA',
+        original: 'PAPHIESSA',
+        suffix: null,
+      },
+      operator: 'Paphiessa Hotel Ltd',
+      registryKey: 'paphiessa-hotel',
+    });
+    const apartmentsEntry = buildRegistryEntry({
+      contacts: {
+        domains: ['paphiessa.com'],
+        emails: ['info@paphiessa.com'],
+        phones: ['+35726945555'],
+        websites: ['https://www.paphiessa.com/'],
+      },
+      establishmentType: 'HOTEL APARTMENTS',
+      location: {
+        address: '2, Agios Filonas Street',
+        district: 'PAFOS',
+        locality: 'Pafos',
+        postcode: '8049',
+      },
+      name: {
+        baseName: 'PAPHIESSA',
+        normalized: 'PAPHIESSA',
+        original: 'PAPHIESSA',
+        suffix: null,
+      },
+      operator: 'Different Operator Ltd',
+      registryKey: 'paphiessa-apartments',
+    });
+
+    const result = service.buildFromRegistryEntries([
+      hotelEntry,
+      apartmentsEntry,
+    ]);
+
+    expect(result.kind).toBe(CANONICAL_HOTEL_KIND.PROPERTY_COMPLEX);
+    expect(result.build.rule).toBe('same_name_multi_type_same_contacts');
+    expect(result.components).toHaveLength(2);
+  });
+
+  it('collapses same-name same-type duplicates without summing capacity', () => {
+    const shorterEntry = buildRegistryEntry({
+      capacity: {
+        beds: 16,
+        rooms: 9,
+      },
+      contacts: {
+        domains: [],
+        emails: ['nnikos@cytanet.com.cy'],
+        phones: ['+35722351288', '+35722952455', '+35799599658'],
+        websites: [],
+      },
+      establishmentType: 'HOTELS WITHOUT STAR',
+      location: {
+        address: '10, Markou Drakou Street',
+        district: 'HILL RESORTS - KALOPANAGIOTIS',
+        locality: 'Kalopanagiotis',
+        postcode: '2862',
+      },
+      name: {
+        baseName: 'KASTALIA',
+        normalized: 'KASTALIA',
+        original: 'KASTALIA',
+        suffix: null,
+      },
+      operator: 'Ms Koulla Nicolaou',
+      registryKey: 'kastalia-short',
+    });
+    const fullerEntry = buildRegistryEntry({
+      capacity: {
+        beds: 10,
+        rooms: 9,
+      },
+      contacts: {
+        domains: [],
+        emails: ['nnikos@cytanet.com.cy'],
+        phones: ['+35722351288', '+35722952455', '+35799599658'],
+        websites: [],
+      },
+      establishmentType: 'HOTELS WITHOUT STAR',
+      location: {
+        address: '10, Markou Drakou Street 2862, Kalopanagiotis',
+        district: 'HILL RESORTS - KALOPANAGIOTIS',
+        locality: 'Kalopanagiotis',
+        postcode: '2862',
+      },
+      name: {
+        baseName: 'KASTALIA',
+        normalized: 'KASTALIA',
+        original: 'KASTALIA',
+        suffix: null,
+      },
+      operator: 'Ms Koulla Nicolaou',
+      registryKey: 'kastalia-full',
+    });
+
+    const result = service.buildFromRegistryEntries([
+      shorterEntry,
+      fullerEntry,
+    ]);
+
+    expect(result.kind).toBe(CANONICAL_HOTEL_KIND.SINGLE_PROPERTY);
+    expect(result.build).toEqual({
+      issues: ['conflicting_capacity_between_collapsed_duplicates'],
+      rule: 'same_name_same_type_same_contacts_prefer_best_location',
+      ruleVersion: 1,
+    });
+    expect(result.capacity).toEqual({
+      beds: 10,
+      mode: CANONICAL_HOTEL_CAPACITY_MODE.SINGLE_COMPONENT,
+      rooms: 9,
+    });
+    expect(result.components).toEqual([
+      {
+        beds: 10,
+        establishmentType: 'HOTELS WITHOUT STAR',
+        name: 'KASTALIA',
+        rooms: 9,
+      },
+    ]);
+    expect(result.location).toEqual(fullerEntry.location);
+  });
+
+  it('blocks an ambiguous base candidate that matches a numeric suffix group', () => {
+    const entry = buildRegistryEntry({
+      capacity: {
+        beds: 64,
+        rooms: 11,
+      },
+      contacts: {
+        domains: ['thalassines.com'],
+        emails: ['reservations@thalassines.com'],
+        phones: ['+35723744866'],
+        websites: ['https://www.thalassines.com/'],
+      },
+      name: {
+        baseName: 'THALASSINES',
+        normalized: 'THALASSINES',
+        original: 'THALASSINES',
+        suffix: null,
+      },
+      registryKey: 'thalassines-base',
+    });
+
+    const result = service.buildAmbiguousBaseCandidate(entry);
+
+    expect(result.status).toBe(CANONICAL_HOTEL_CANDIDATE_STATUS.BLOCKED);
+    expect(result.kind).toBe(CANONICAL_HOTEL_KIND.SINGLE_PROPERTY);
+    expect(result.capacity.mode).toBe(
+      CANONICAL_HOTEL_CAPACITY_MODE.SINGLE_COMPONENT,
+    );
+    expect(result.build.issues).toEqual([
+      'ambiguous_base_candidate_matches_numeric_suffix_group',
+    ]);
+    expect(result.processing.error).toBe(
+      'Ambiguous base candidate matches existing numeric suffix group; manual rule required before canonical creation.',
+    );
+  });
 });

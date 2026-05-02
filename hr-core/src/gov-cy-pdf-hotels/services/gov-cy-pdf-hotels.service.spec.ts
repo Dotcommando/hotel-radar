@@ -102,7 +102,7 @@ describe('GovCyPdfHotelsService', () => {
       domain: 'anassa.com',
       emails: ['anassa@thanoshotels.com'],
       faxes: ['+357 26 322 900'],
-      phones: ['+357 26 888 000'],
+      phones: ['+35726888000'],
       websites: ['https://www.anassa.com/'],
     },
     createdAt: new Date('2026-04-21T08:00:00.000Z'),
@@ -345,7 +345,13 @@ describe('GovCyPdfHotelsService', () => {
                           domain: 'anassa.com',
                           emails: ['anassa@thanoshotels.com'],
                           faxes: ['+357 26 322 900'],
-                          phones: ['+357 26 888 000'],
+                          phones: [
+                            '+357 26 888 000',
+                            '+35799525462+35799406091',
+                            '+36725583991',
+                            '+22833709',
+                            'Tel: 26 621534, 99 603286',
+                          ],
                           websites: ['www.anassa.com'],
                         },
                         establishmentType: 'HOTEL',
@@ -416,6 +422,18 @@ describe('GovCyPdfHotelsService', () => {
       {
         ...recognizedHotelFixture,
         createdAt: new Date('2026-04-21T08:00:00.000Z'),
+        contacts: {
+          ...recognizedHotelFixture.contacts,
+          phones: [
+            '+35726888000',
+            '+35799525462',
+            '+35799406091',
+            '+35725583991',
+            '+35722833709',
+            '+35726621534',
+            '+35799603286',
+          ],
+        },
       },
     ]);
   });
@@ -1250,7 +1268,7 @@ describe('GovCyPdfHotelsService', () => {
           domain: 'anogyravillage.cy',
           emails: ['info@cyprusvillagehouses.net', 'soulibeach@cytanet.com.cy'],
           faxes: ['+357 25 736 792'],
-          phones: ['+357 99 525 462'],
+          phones: ['+35799525462'],
           websites: [
             'https://anogyravillage.cy/nicolas-maria-cottages/',
             'https://anogyravillage.cy/',

@@ -5,6 +5,7 @@ import { IHotelRegistryEntry } from '../hotel-registry-entries/types/hotel-regis
 import { CANONICAL_HOTEL_CANDIDATE_MODEL_NAME } from './constants/canonical-hotel-candidate-model-name.constant';
 import { ICanonicalHotelCandidate } from './types/canonical-hotel-candidate.interface';
 import { CanonicalHotelCandidateBuilderService } from './services/canonical-hotel-candidate-builder.service';
+import { ICreateCanonicalHotelCandidate } from './types/create-canonical-hotel-candidate.interface';
 
 @Injectable()
 export class CanonicalHotelCandidatesService {
@@ -21,6 +22,29 @@ export class CanonicalHotelCandidatesService {
       this.canonicalHotelCandidateBuilderService.buildFromRegistryEntries(
         entries,
       );
+
+    await this.deleteObsoleteSingleCandidates(
+      entries,
+      candidateFields.candidateKey,
+    );
+
+    return this.upsertCandidateFields(candidateFields);
+  }
+
+  async upsertAmbiguousBaseCandidate(
+    entry: IHotelRegistryEntry,
+  ): Promise<ICanonicalHotelCandidate> {
+    const candidateFields =
+      this.canonicalHotelCandidateBuilderService.buildAmbiguousBaseCandidate(
+        entry,
+      );
+
+    return this.upsertCandidateFields(candidateFields);
+  }
+
+  private async upsertCandidateFields(
+    candidateFields: ICreateCanonicalHotelCandidate,
+  ): Promise<ICanonicalHotelCandidate> {
     const now = new Date();
 
     await this.canonicalHotelCandidateModel
@@ -56,5 +80,30 @@ export class CanonicalHotelCandidatesService {
     }
 
     return candidate;
+  }
+
+  private async deleteObsoleteSingleCandidates(
+    entries: IHotelRegistryEntry[],
+    nextCandidateKey: string,
+  ): Promise<void> {
+    if (entries.length < 2) {
+      return;
+    }
+
+    const obsoleteCandidateKeys = entries
+      .map(({ registryKey }) => `ccv1|single|${registryKey}`)
+      .filter((candidateKey) => candidateKey !== nextCandidateKey);
+
+    if (obsoleteCandidateKeys.length === 0) {
+      return;
+    }
+
+    await this.canonicalHotelCandidateModel
+      .deleteMany({
+        candidateKey: {
+          $in: obsoleteCandidateKeys,
+        },
+      })
+      .exec();
   }
 }

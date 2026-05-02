@@ -49,6 +49,7 @@ import {
   makeStrictHotelDedupeKey,
   normalizeHotelName,
 } from '../../raw-hotels/utils/hotel-identity.util';
+import { normalizeCyprusPhones } from '../utils/cyprus-phone-normalization.util';
 
 interface INormalizedWebsiteCandidate {
   email: string | null;
@@ -469,7 +470,7 @@ export class GovCyPdfHotelsService {
       domain: this.deriveDomainFromWebsite(normalizedWebsites[0] ?? null),
       emails: Array.from(emails),
       faxes: this.normalizePhoneLikeValues(contacts.faxes),
-      phones: this.normalizePhoneLikeValues(contacts.phones),
+      phones: normalizeCyprusPhones(contacts.phones),
       websites: normalizedWebsites,
     };
   }

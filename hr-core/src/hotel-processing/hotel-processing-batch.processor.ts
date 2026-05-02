@@ -125,13 +125,21 @@ export class HotelProcessingBatchProcessor {
 
       try {
         const groupEntries =
-          await this.hotelRegistryEntriesService.readSafeNumericSuffixGroup(
+          await this.hotelRegistryEntriesService.readSafeCanonicalCandidateGroup(
             registryEntry,
           );
-        const candidate =
-          await this.canonicalHotelCandidatesService.upsertFromRegistryEntries(
-            groupEntries,
-          );
+        const hasAmbiguousNumericSuffixGroup =
+          groupEntries.length === 1 &&
+          (await this.hotelRegistryEntriesService.hasCompatibleNumericSuffixGroup(
+            registryEntry,
+          ));
+        const candidate = hasAmbiguousNumericSuffixGroup
+          ? await this.canonicalHotelCandidatesService.upsertAmbiguousBaseCandidate(
+              registryEntry,
+            )
+          : await this.canonicalHotelCandidatesService.upsertFromRegistryEntries(
+              groupEntries,
+            );
 
         for (const groupEntry of groupEntries) {
           const groupEntryId = groupEntry._id.toString();

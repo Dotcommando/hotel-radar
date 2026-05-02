@@ -38,7 +38,11 @@ interface IHotelRegistryEntriesServiceMock {
     Promise<void>,
     [Types.ObjectId, Types.ObjectId, string]
   >;
-  readSafeNumericSuffixGroup: jest.Mock<
+  hasCompatibleNumericSuffixGroup: jest.Mock<
+    Promise<boolean>,
+    [IHotelRegistryEntry]
+  >;
+  readSafeCanonicalCandidateGroup: jest.Mock<
     Promise<IHotelRegistryEntry[]>,
     [IHotelRegistryEntry]
   >;
@@ -71,6 +75,10 @@ interface ICanonicalHotelCandidatesServiceMock {
   upsertFromRegistryEntries: jest.Mock<
     Promise<ICanonicalHotelCandidate>,
     [IHotelRegistryEntry[]]
+  >;
+  upsertAmbiguousBaseCandidate: jest.Mock<
+    Promise<ICanonicalHotelCandidate>,
+    [IHotelRegistryEntry]
   >;
 }
 
@@ -183,7 +191,8 @@ describe('HotelProcessingBatchProcessor registry-to-candidates', () => {
       markFailed: jest.fn(),
       markIgnored: jest.fn(),
       markProcessed: jest.fn(),
-      readSafeNumericSuffixGroup: jest.fn(),
+      hasCompatibleNumericSuffixGroup: jest.fn(),
+      readSafeCanonicalCandidateGroup: jest.fn(),
     };
     hotelProcessingRunsService = {
       complete: jest.fn(),
@@ -197,6 +206,7 @@ describe('HotelProcessingBatchProcessor registry-to-candidates', () => {
       addRegistryToCandidatesBatch: jest.fn(),
     };
     canonicalHotelCandidatesService = {
+      upsertAmbiguousBaseCandidate: jest.fn(),
       upsertFromRegistryEntries: jest.fn(),
     };
     const module: TestingModule = await Test.createTestingModule({
@@ -260,10 +270,12 @@ describe('HotelProcessingBatchProcessor registry-to-candidates', () => {
       groupedEntryOne,
       groupedEntryTwo,
     ]);
-    hotelRegistryEntriesService.readSafeNumericSuffixGroup.mockResolvedValue([
-      groupedEntryOne,
-      groupedEntryTwo,
-    ]);
+    hotelRegistryEntriesService.hasCompatibleNumericSuffixGroup.mockResolvedValue(
+      false,
+    );
+    hotelRegistryEntriesService.readSafeCanonicalCandidateGroup.mockResolvedValue(
+      [groupedEntryOne, groupedEntryTwo],
+    );
     canonicalHotelCandidatesService.upsertFromRegistryEntries.mockResolvedValue(
       buildCandidate(candidateId),
     );
@@ -313,7 +325,10 @@ describe('HotelProcessingBatchProcessor registry-to-candidates', () => {
     const candidateId = new Types.ObjectId();
 
     hotelRegistryEntriesService.claimPendingForRun.mockResolvedValue([entry]);
-    hotelRegistryEntriesService.readSafeNumericSuffixGroup.mockResolvedValue([
+    hotelRegistryEntriesService.hasCompatibleNumericSuffixGroup.mockResolvedValue(
+      false,
+    );
+    hotelRegistryEntriesService.readSafeCanonicalCandidateGroup.mockResolvedValue([
       entry,
     ]);
     canonicalHotelCandidatesService.upsertFromRegistryEntries.mockResolvedValue(
@@ -337,5 +352,49 @@ describe('HotelProcessingBatchProcessor registry-to-candidates', () => {
       stage: HOTEL_PROCESSING_STAGE.REGISTRY_TO_CANDIDATES,
     });
     expect(hotelProcessingRunsService.complete).not.toHaveBeenCalled();
+  });
+
+  it('creates a blocked candidate for an ambiguous base entry matching a numeric suffix group', async () => {
+    const entry = buildRegistryEntry({
+      name: {
+        baseName: 'THALASSINES',
+        normalized: 'THALASSINES',
+        original: 'THALASSINES',
+        suffix: null,
+      },
+      registryKey: 'thalassines-base',
+    });
+    const candidateId = new Types.ObjectId();
+
+    hotelRegistryEntriesService.claimPendingForRun.mockResolvedValue([entry]);
+    hotelRegistryEntriesService.readSafeCanonicalCandidateGroup.mockResolvedValue([
+      entry,
+    ]);
+    hotelRegistryEntriesService.hasCompatibleNumericSuffixGroup.mockResolvedValue(
+      true,
+    );
+    canonicalHotelCandidatesService.upsertAmbiguousBaseCandidate.mockResolvedValue(
+      buildCandidate(candidateId),
+    );
+    hotelRegistryEntriesService.countByProcessingStatus.mockResolvedValue(0);
+
+    await processor.processRegistryToCandidatesBatch({
+      batchNo: 1,
+      batchSize: 50,
+      runId: 'run-1',
+      stage: HOTEL_PROCESSING_STAGE.REGISTRY_TO_CANDIDATES,
+    });
+
+    expect(
+      canonicalHotelCandidatesService.upsertAmbiguousBaseCandidate,
+    ).toHaveBeenCalledWith(entry);
+    expect(
+      canonicalHotelCandidatesService.upsertFromRegistryEntries,
+    ).not.toHaveBeenCalled();
+    expect(hotelRegistryEntriesService.markProcessed).toHaveBeenCalledWith(
+      entry._id,
+      candidateId,
+      'run-1',
+    );
   });
 });
