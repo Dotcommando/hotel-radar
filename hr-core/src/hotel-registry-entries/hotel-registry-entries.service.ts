@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { Model } from 'mongoose';
+import { Model, Types } from 'mongoose';
 import { HOTEL_PROCESSING_STATUS } from '../hotel-processing/constants/hotel-processing-status.enum';
 import { IRawHotel } from '../raw-hotels/types/raw-hotel.interface';
 import { HOTEL_REGISTRY_ENTRY_MODEL_NAME } from './constants/hotel-registry-entry-model-name.constant';
@@ -94,6 +94,243 @@ export class HotelRegistryEntriesService {
       entry,
       issues: entryFields.issues,
     };
+  }
+
+  async initializeMissingProcessing(): Promise<number> {
+    const result = await this.hotelRegistryEntryModel
+      .updateMany(
+        {
+          processing: {
+            $exists: false,
+          },
+        },
+        {
+          $set: {
+            processing: {
+              canonicalHotelCandidateId: null,
+              claimedAt: null,
+              error: null,
+              processedAt: null,
+              runId: null,
+              status: HOTEL_PROCESSING_STATUS.PENDING,
+            },
+          },
+        },
+      )
+      .exec();
+
+    return result.modifiedCount;
+  }
+
+  async recoverStaleClaimedDocuments(staleBefore: Date): Promise<number> {
+    const result = await this.hotelRegistryEntryModel
+      .updateMany(
+        {
+          'processing.claimedAt': {
+            $lt: staleBefore,
+          },
+          'processing.status': HOTEL_PROCESSING_STATUS.CLAIMED,
+        },
+        {
+          $set: {
+            'processing.canonicalHotelCandidateId': null,
+            'processing.claimedAt': null,
+            'processing.error': null,
+            'processing.runId': null,
+            'processing.status': HOTEL_PROCESSING_STATUS.PENDING,
+          },
+        },
+      )
+      .exec();
+
+    return result.modifiedCount;
+  }
+
+  async countByProcessingStatus(
+    status: HOTEL_PROCESSING_STATUS,
+  ): Promise<number> {
+    return this.hotelRegistryEntryModel
+      .countDocuments({
+        'processing.status': status,
+      })
+      .exec();
+  }
+
+  async claimPendingForRun(
+    runId: string,
+    batchSize: number,
+  ): Promise<IHotelRegistryEntry[]> {
+    const claimedAt = new Date();
+    const claimedRegistryEntries: IHotelRegistryEntry[] = [];
+
+    for (let index = 0; index < batchSize; index += 1) {
+      const registryEntry = await this.hotelRegistryEntryModel
+        .findOneAndUpdate(
+          {
+            'processing.status': HOTEL_PROCESSING_STATUS.PENDING,
+          },
+          {
+            $set: {
+              'processing.claimedAt': claimedAt,
+              'processing.error': null,
+              'processing.runId': runId,
+              'processing.status': HOTEL_PROCESSING_STATUS.CLAIMED,
+            },
+          },
+          {
+            new: true,
+            sort: {
+              _id: 1,
+            },
+          },
+        )
+        .exec();
+
+      if (registryEntry === null) {
+        break;
+      }
+
+      claimedRegistryEntries.push(registryEntry);
+    }
+
+    return claimedRegistryEntries;
+  }
+
+  async readSafeNumericSuffixGroup(
+    entry: IHotelRegistryEntry,
+  ): Promise<IHotelRegistryEntry[]> {
+    const groupingFilter = this.buildSafeNumericSuffixGroupFilter(entry);
+
+    if (groupingFilter === null) {
+      return [entry];
+    }
+
+    const entries = await this.hotelRegistryEntryModel
+      .find(groupingFilter)
+      .sort({
+        'name.normalized': 1,
+      })
+      .exec();
+
+    if (entries.length < 2) {
+      return [entry];
+    }
+
+    return entries;
+  }
+
+  async markProcessed(
+    registryEntryId: Types.ObjectId,
+    canonicalHotelCandidateId: Types.ObjectId,
+    runId: string,
+  ): Promise<void> {
+    await this.hotelRegistryEntryModel
+      .updateOne(
+        {
+          _id: registryEntryId,
+        },
+        {
+          $set: {
+            'processing.canonicalHotelCandidateId': canonicalHotelCandidateId,
+            'processing.claimedAt': null,
+            'processing.error': null,
+            'processing.processedAt': new Date(),
+            'processing.runId': runId,
+            'processing.status': HOTEL_PROCESSING_STATUS.PROCESSED,
+          },
+        },
+      )
+      .exec();
+  }
+
+  async markIgnored(
+    registryEntryId: Types.ObjectId,
+    error: string,
+  ): Promise<void> {
+    await this.hotelRegistryEntryModel
+      .updateOne(
+        {
+          _id: registryEntryId,
+        },
+        {
+          $set: {
+            'processing.claimedAt': null,
+            'processing.error': error,
+            'processing.processedAt': new Date(),
+            'processing.status': HOTEL_PROCESSING_STATUS.IGNORED,
+          },
+        },
+      )
+      .exec();
+  }
+
+  async markFailed(
+    registryEntryId: Types.ObjectId,
+    error: string,
+  ): Promise<void> {
+    await this.hotelRegistryEntryModel
+      .updateOne(
+        {
+          _id: registryEntryId,
+        },
+        {
+          $set: {
+            'processing.claimedAt': null,
+            'processing.error': error,
+            'processing.processedAt': new Date(),
+            'processing.status': HOTEL_PROCESSING_STATUS.FAILED,
+          },
+        },
+      )
+      .exec();
+  }
+
+  private buildSafeNumericSuffixGroupFilter(
+    entry: IHotelRegistryEntry,
+  ): Record<string, unknown> | null {
+    if (
+      entry.status !== HOTEL_REGISTRY_ENTRY_STATUS.READY ||
+      entry.name.suffix === null ||
+      !/^\d+[A-Z]?$/.test(entry.name.suffix) ||
+      entry.name.baseName.trim().length === 0 ||
+      entry.location.postcode === null ||
+      entry.location.locality === null ||
+      entry.operator === null ||
+      this.isEmptyContacts(entry.contacts) ||
+      entry.issues.length > 0
+    ) {
+      return null;
+    }
+
+    return {
+      'contacts.domains': entry.contacts.domains,
+      'contacts.emails': entry.contacts.emails,
+      'contacts.phones': entry.contacts.phones,
+      'contacts.websites': entry.contacts.websites,
+      'location.locality': entry.location.locality,
+      'location.postcode': entry.location.postcode,
+      'name.baseName': entry.name.baseName,
+      'name.suffix': {
+        $regex: '^\\d+[A-Z]?$',
+      },
+      operator: entry.operator,
+      'processing.status': {
+        $in: [
+          HOTEL_PROCESSING_STATUS.PENDING,
+          HOTEL_PROCESSING_STATUS.CLAIMED,
+        ],
+      },
+      status: HOTEL_REGISTRY_ENTRY_STATUS.READY,
+    };
+  }
+
+  private isEmptyContacts(contacts: IHotelContacts): boolean {
+    return (
+      contacts.domains.length === 0 &&
+      contacts.emails.length === 0 &&
+      contacts.phones.length === 0 &&
+      contacts.websites.length === 0
+    );
   }
 
   private buildRegistryEntryFields(

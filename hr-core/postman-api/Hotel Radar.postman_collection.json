@@ -54,6 +54,53 @@
       "response": []
     },
     {
+      "name": "Stage 3. Process registry entries to candidates",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "const response = pm.response.json();",
+              "",
+              "if (response.runId) {",
+              "  pm.environment.set('runId', response.runId);",
+              "  pm.collectionVariables.set('runId', response.runId);",
+              "}"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "auth": {
+          "type": "noauth"
+        },
+        "method": "POST",
+        "header": [],
+        "body": {
+          "mode": "raw",
+          "raw": "",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "{{hrCoreBaseUrl}}/hotel-processing/runs/registry-to-candidates",
+          "host": [
+            "{{hrCoreBaseUrl}}"
+          ],
+          "path": [
+            "hotel-processing",
+            "runs",
+            "registry-to-candidates"
+          ]
+        }
+      },
+      "response": []
+    },
+    {
       "name": "Stage 1. Receive and parse PDF from www.gov.cy",
       "event": [
         {
@@ -100,7 +147,7 @@
       "response": []
     },
     {
-      "name": "Stage 2. Check raw-to-registry run by id",
+      "name": "Check Run by Id",
       "request": {
         "auth": {
           "type": "noauth"

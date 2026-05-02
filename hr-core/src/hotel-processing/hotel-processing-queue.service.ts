@@ -40,6 +40,24 @@ export class HotelProcessingQueueService implements OnModuleDestroy {
     );
   }
 
+  async addRegistryToCandidatesBatch(
+    data: IHotelProcessingBatchJobData,
+  ): Promise<void> {
+    await this.queue.add(
+      HOTEL_PROCESSING_JOB_NAME.REGISTRY_TO_CANDIDATES_BATCH,
+      data,
+      {
+        attempts: 3,
+        backoff: {
+          delay: 5000,
+          type: 'fixed',
+        },
+        removeOnComplete: true,
+        removeOnFail: 100,
+      },
+    );
+  }
+
   async onModuleDestroy(): Promise<void> {
     await this.queue.close();
   }

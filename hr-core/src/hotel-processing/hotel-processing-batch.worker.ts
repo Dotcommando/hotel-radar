@@ -26,6 +26,15 @@ export class HotelProcessingBatchWorker
             job.data,
           );
         }
+
+        if (
+          job.name ===
+          String(HOTEL_PROCESSING_JOB_NAME.REGISTRY_TO_CANDIDATES_BATCH)
+        ) {
+          await this.hotelProcessingBatchProcessor.processRegistryToCandidatesBatch(
+            job.data,
+          );
+        }
       },
       {
         concurrency: 1,
