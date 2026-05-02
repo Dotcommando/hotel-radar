@@ -35,9 +35,7 @@ const GENERIC_SUFFIXES = new Set([
 ]);
 
 export function normalizeHotelName(name: string): string {
-  return removeTrailingClassMarkers(
-    normalizeNameText(name),
-  );
+  return removeTrailingClassMarkers(normalizeNameText(name));
 }
 
 export function makeNameMatchKey(name: string): string {
@@ -49,7 +47,9 @@ export function makeNameMatchKey(name: string): string {
   return withoutGenericSuffixes.join(' ');
 }
 
-export function makeStrictHotelDedupeKey(hotel: IHotelForStrictDedupeKey): string {
+export function makeStrictHotelDedupeKey(
+  hotel: IHotelForStrictDedupeKey,
+): string {
   return [
     normalizeHotelName(hotel.nameNormalized),
     normalizePostcode(hotel.postcode),
@@ -74,10 +74,10 @@ export function makeSoftHotelDuplicateCandidateKey(
 function normalizeNameText(value: string): string {
   return value
     .normalize('NFKC')
-    .replace(/[’‘`´]/g, '\'')
+    .replace(/[’‘`´]/g, "'")
     .replace(/&/g, ' AND ')
     .replace(/[.,;:()[\]{}]/g, ' ')
-    .replace(/[\/\\]/g, ' ')
+    .replace(/[/\\]/g, ' ')
     .replace(/[-–—]/g, ' ')
     .replace(/\s+/g, ' ')
     .trim()

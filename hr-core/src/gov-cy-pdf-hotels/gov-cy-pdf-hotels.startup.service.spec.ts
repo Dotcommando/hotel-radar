@@ -72,30 +72,30 @@ describe('GovCyPdfHotelsStartupService', () => {
     processExitSpy.mockRestore();
   });
 
-  it('logs an error and exits when Apify is unavailable', async () => {
+  it('logs a warning and keeps startup alive when Apify is unavailable', async () => {
     jest.mocked(global.fetch).mockResolvedValueOnce({
       ok: false,
       status: 401,
       text: async () => 'Unauthorized',
     });
 
-    const consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation();
+    const consoleWarnSpy = jest.spyOn(console, 'warn').mockImplementation();
     const processExitSpy = jest.spyOn(process, 'exit').mockImplementation((code?: string | number | null) => {
       throw new Error(`process.exit:${String(code)}`);
     });
 
-    await expect(service.onModuleInit()).rejects.toThrow('process.exit:1');
-    expect(consoleErrorSpy).toHaveBeenCalledWith(
+    await expect(service.onModuleInit()).resolves.toBeUndefined();
+    expect(consoleWarnSpy).toHaveBeenCalledWith(
       'GovCyPdfHotelsModule startup check failed:',
       'Apify health check failed with status 401: Unauthorized',
     );
-    expect(processExitSpy).toHaveBeenCalledWith(1);
+    expect(processExitSpy).not.toHaveBeenCalled();
 
-    consoleErrorSpy.mockRestore();
+    consoleWarnSpy.mockRestore();
     processExitSpy.mockRestore();
   });
 
-  it('logs an error and exits when OpenAI reports insufficient quota', async () => {
+  it('logs a warning and keeps startup alive when OpenAI reports insufficient quota', async () => {
     jest.mocked(global.fetch)
       .mockResolvedValueOnce({
         json: async () => ({ data: { username: 'hotel-radar' } }),
@@ -119,19 +119,19 @@ describe('GovCyPdfHotelsStartupService', () => {
         text: async () => 'quota exceeded',
       });
 
-    const consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation();
+    const consoleWarnSpy = jest.spyOn(console, 'warn').mockImplementation();
     const processExitSpy = jest.spyOn(process, 'exit').mockImplementation((code?: string | number | null) => {
       throw new Error(`process.exit:${String(code)}`);
     });
 
-    await expect(service.onModuleInit()).rejects.toThrow('process.exit:1');
-    expect(consoleErrorSpy).toHaveBeenCalledWith(
+    await expect(service.onModuleInit()).resolves.toBeUndefined();
+    expect(consoleWarnSpy).toHaveBeenCalledWith(
       'GovCyPdfHotelsModule startup check failed:',
       'OpenAI health check failed: insufficient quota or billing limit reached',
     );
-    expect(processExitSpy).toHaveBeenCalledWith(1);
+    expect(processExitSpy).not.toHaveBeenCalled();
 
-    consoleErrorSpy.mockRestore();
+    consoleWarnSpy.mockRestore();
     processExitSpy.mockRestore();
   });
 });

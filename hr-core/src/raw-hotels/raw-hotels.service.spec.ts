@@ -4,6 +4,7 @@ import { RawHotelsService } from './raw-hotels.service';
 import { RAW_HOTEL_MODEL_NAME } from './constants/raw-hotel-model-name.constant';
 import { ICreateRawHotel } from './types/create-raw-hotel.interface';
 import { IRawHotel } from './types/raw-hotel.interface';
+import { HOTEL_PROCESSING_STATUS } from '../hotel-processing/constants/hotel-processing-status.enum';
 import {
   makeNameMatchKey,
   makeStrictHotelDedupeKey,
@@ -27,10 +28,19 @@ interface IExecable<TResult> {
 }
 
 interface IRawHotelModelMock {
-  bulkWrite: jest.Mock<Promise<unknown>, [Array<Record<string, unknown>>, IBulkWriteOptions]>;
-  insertMany: jest.Mock<Promise<IRawHotel[]>, [ICreateRawHotel[], IInsertManyOptions]>;
+  bulkWrite: jest.Mock<
+    Promise<unknown>,
+    [Array<Record<string, unknown>>, IBulkWriteOptions]
+  >;
+  insertMany: jest.Mock<
+    Promise<IRawHotel[]>,
+    [ICreateRawHotel[], IInsertManyOptions]
+  >;
   find: jest.Mock<IExecable<IRawHotel[]>, [Record<string, unknown>]>;
-  deleteMany: jest.Mock<IExecable<IDeleteManyResult>, [Record<string, unknown>]>;
+  deleteMany: jest.Mock<
+    IExecable<IDeleteManyResult>,
+    [Record<string, unknown>]
+  >;
 }
 
 describe('RawHotelsService', () => {
@@ -57,23 +67,44 @@ describe('RawHotelsService', () => {
     nameNormalized: 'ANASSA',
     operatorName: 'Thanos Club Hotels Ltd',
     postcode: '8852',
+    processing: {
+      claimedAt: null,
+      error: null,
+      hotelRegistryEntryId: null,
+      processedAt: null,
+      runId: null,
+      status: HOTEL_PROCESSING_STATUS.PENDING,
+    },
     region: 'Pafos',
     rooms: 177,
     sourceFile: {
       filename: 'POLIS_HOTELS_16.2.2026.pdf',
-      localPath: '/opt/media-factory/data/files/2026-02-16/POLIS_HOTELS_16.2.2026.pdf',
-      pdfUrl: 'https://www.gov.cy/app/uploads/sites/26/2026/02/POLIS_HOTELS_16.2.2026.pdf',
+      localPath:
+        '/opt/media-factory/data/files/2026-02-16/POLIS_HOTELS_16.2.2026.pdf',
+      pdfUrl:
+        'https://www.gov.cy/app/uploads/sites/26/2026/02/POLIS_HOTELS_16.2.2026.pdf',
     },
     stars: 5,
     updatedAt: new Date('2026-02-20T00:00:00.000Z'),
   };
+  const { processing, ...createRawHotelFixture } = rawHotelFixture;
+  void processing;
 
   beforeEach(async () => {
     rawHotelModel = {
-      bulkWrite: jest.fn(),
-      deleteMany: jest.fn(),
-      find: jest.fn(),
-      insertMany: jest.fn(),
+      bulkWrite: jest.fn<
+        Promise<unknown>,
+        [Array<Record<string, unknown>>, IBulkWriteOptions]
+      >(),
+      deleteMany: jest.fn<
+        IExecable<IDeleteManyResult>,
+        [Record<string, unknown>]
+      >(),
+      find: jest.fn<IExecable<IRawHotel[]>, [Record<string, unknown>]>(),
+      insertMany: jest.fn<
+        Promise<IRawHotel[]>,
+        [ICreateRawHotel[], IInsertManyOptions]
+      >(),
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -90,26 +121,31 @@ describe('RawHotelsService', () => {
   });
 
   it('creates many raw hotels in a single insertMany call', async () => {
-    const rawHotels: ICreateRawHotel[] = [rawHotelFixture];
+    const rawHotels: ICreateRawHotel[] = [createRawHotelFixture];
 
     rawHotelModel.insertMany.mockResolvedValue([rawHotelFixture]);
 
     const result = await service.createMany(rawHotels);
 
-    expect(rawHotelModel.insertMany).toHaveBeenCalledWith([
-      {
-        ...rawHotelFixture,
-        nameMatchKey: makeNameMatchKey(normalizeHotelName(rawHotelFixture.name)),
-        nameNormalized: normalizeHotelName(rawHotelFixture.name),
-        strictHotelDedupeKey: makeStrictHotelDedupeKey({
-          beds: rawHotelFixture.beds,
-          contacts: rawHotelFixture.contacts,
+    expect(rawHotelModel.insertMany).toHaveBeenCalledWith(
+      [
+        {
+          ...createRawHotelFixture,
+          nameMatchKey: makeNameMatchKey(
+            normalizeHotelName(rawHotelFixture.name),
+          ),
           nameNormalized: normalizeHotelName(rawHotelFixture.name),
-          postcode: rawHotelFixture.postcode,
-          rooms: rawHotelFixture.rooms,
-        }),
-      },
-    ], { ordered: true });
+          strictHotelDedupeKey: makeStrictHotelDedupeKey({
+            beds: rawHotelFixture.beds,
+            contacts: rawHotelFixture.contacts,
+            nameNormalized: normalizeHotelName(rawHotelFixture.name),
+            postcode: rawHotelFixture.postcode,
+            rooms: rawHotelFixture.rooms,
+          }),
+        },
+      ],
+      { ordered: true },
+    );
     expect(result).toEqual([rawHotelFixture]);
   });
 
@@ -123,7 +159,10 @@ describe('RawHotelsService', () => {
   it('upserts many raw hotels by source file name and strict dedupe key', async () => {
     rawHotelModel.bulkWrite.mockResolvedValue({});
 
-    const result = await service.upsertManyByStrictHotelDedupeKeyAndSourceFileName([rawHotelFixture]);
+    const result =
+      await service.upsertManyByStrictHotelDedupeKeyAndSourceFileName([
+        createRawHotelFixture,
+      ]);
 
     const nameNormalized = normalizeHotelName(rawHotelFixture.name);
     const nameMatchKey = makeNameMatchKey(nameNormalized);
@@ -167,6 +206,14 @@ describe('RawHotelsService', () => {
               },
               $setOnInsert: {
                 createdAt: rawHotelFixture.createdAt,
+                processing: {
+                  claimedAt: null,
+                  error: null,
+                  hotelRegistryEntryId: null,
+                  processedAt: null,
+                  runId: null,
+                  status: HOTEL_PROCESSING_STATUS.PENDING,
+                },
               },
             },
             upsert: true,
@@ -179,14 +226,17 @@ describe('RawHotelsService', () => {
   });
 
   it('returns zero when upsertManyByStrictHotelDedupeKeyAndSourceFileName receives no records', async () => {
-    const result = await service.upsertManyByStrictHotelDedupeKeyAndSourceFileName([]);
+    const result =
+      await service.upsertManyByStrictHotelDedupeKeyAndSourceFileName([]);
 
     expect(rawHotelModel.bulkWrite).not.toHaveBeenCalled();
     expect(result).toBe(0);
   });
 
   it('reads many raw hotels by source file names', async () => {
-    const exec = jest.fn<Promise<IRawHotel[]>, []>().mockResolvedValue([rawHotelFixture]);
+    const exec = jest
+      .fn<Promise<IRawHotel[]>, []>()
+      .mockResolvedValue([rawHotelFixture]);
 
     rawHotelModel.find.mockReturnValue({ exec });
 
@@ -230,7 +280,9 @@ describe('RawHotelsService', () => {
 
   it('reads many raw hotels by source file names and createdAt lower bound', async () => {
     const createdAtFrom = new Date('2026-02-20T00:00:00.000Z');
-    const exec = jest.fn<Promise<IRawHotel[]>, []>().mockResolvedValue([rawHotelFixture]);
+    const exec = jest
+      .fn<Promise<IRawHotel[]>, []>()
+      .mockResolvedValue([rawHotelFixture]);
 
     rawHotelModel.find.mockReturnValue({ exec });
 

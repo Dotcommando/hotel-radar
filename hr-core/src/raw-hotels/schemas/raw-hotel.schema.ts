@@ -1,4 +1,5 @@
 import { Schema } from 'mongoose';
+import { HOTEL_PROCESSING_STATUS } from '../../hotel-processing/constants/hotel-processing-status.enum';
 import { RAW_HOTELS_COLLECTION_NAME } from '../constants/raw-hotels-collection-name.constant';
 import { IRawHotel } from '../types/raw-hotel.interface';
 
@@ -46,6 +47,45 @@ const rawHotelSourceFileSchema = new Schema(
       type: String,
     },
     pdfUrl: {
+      required: true,
+      type: String,
+    },
+  },
+  {
+    _id: false,
+  },
+);
+
+const rawHotelProcessingSchema = new Schema(
+  {
+    claimedAt: {
+      default: null,
+      required: false,
+      type: Date,
+    },
+    error: {
+      default: null,
+      required: false,
+      type: String,
+    },
+    hotelRegistryEntryId: {
+      default: null,
+      required: false,
+      type: Schema.Types.ObjectId,
+    },
+    processedAt: {
+      default: null,
+      required: false,
+      type: Date,
+    },
+    runId: {
+      default: null,
+      required: false,
+      type: String,
+    },
+    status: {
+      default: HOTEL_PROCESSING_STATUS.PENDING,
+      enum: Object.values(HOTEL_PROCESSING_STATUS),
       required: true,
       type: String,
     },
@@ -122,6 +162,11 @@ export const rawHotelSchema = new Schema<IRawHotel>(
       required: false,
       type: String,
     },
+    processing: {
+      default: (): Record<string, unknown> => ({}),
+      required: true,
+      type: rawHotelProcessingSchema,
+    },
     region: {
       default: null,
       required: false,
@@ -156,3 +201,7 @@ export const rawHotelSchema = new Schema<IRawHotel>(
     strict: true,
   },
 );
+
+rawHotelSchema.index({ 'processing.status': 1, _id: 1 });
+rawHotelSchema.index({ 'processing.runId': 1 });
+rawHotelSchema.index({ 'processing.claimedAt': 1 });

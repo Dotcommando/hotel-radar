@@ -1,4 +1,5 @@
 import { IRawHotelContacts } from './raw-hotel-contacts.interface';
+import { IRawHotelProcessing } from './raw-hotel-processing.interface';
 import { IRawHotelSourceFile } from './raw-hotel-source-file.interface';
 
 export interface IRawHotel {
@@ -16,6 +17,7 @@ export interface IRawHotel {
   nameNormalized: string;
   operatorName: string | null;
   postcode: string | null;
+  processing: IRawHotelProcessing;
   region: string | null;
   rooms: number | null;
   sourceFile: IRawHotelSourceFile;

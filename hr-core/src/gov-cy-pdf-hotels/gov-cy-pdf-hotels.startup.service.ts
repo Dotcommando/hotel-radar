@@ -23,8 +23,7 @@ export class GovCyPdfHotelsStartupService implements OnModuleInit {
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
 
-      console.error('GovCyPdfHotelsModule startup check failed:', message);
-      process.exit(1);
+      console.warn('GovCyPdfHotelsModule startup check failed:', message);
     }
   }
 
