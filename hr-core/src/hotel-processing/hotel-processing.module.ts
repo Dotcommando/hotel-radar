@@ -34,5 +34,6 @@ import { StartRawToRegistryRunUseCase } from './use-cases/start-raw-to-registry-
     HotelProcessingRunsService,
     StartRawToRegistryRunUseCase,
   ],
+  exports: [HotelProcessingRunsService],
 })
 export class HotelProcessingModule {}

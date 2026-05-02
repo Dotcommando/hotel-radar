@@ -1,6 +1,6 @@
 import * as fsPromises from 'node:fs/promises';
 import { Test, TestingModule } from '@nestjs/testing';
-import { PDF_DOWNLOAD_METHOD } from './constants/pdf-download-method.constant';
+import { PDF_DOWNLOAD_METHOD } from '../constants/pdf-download-method.constant';
 import { GovCyPdfDownloaderService } from './gov-cy-pdf-downloader.service';
 
 const browserCloseMock = jest.fn<Promise<void>, []>();
@@ -19,11 +19,15 @@ jest.mock('node:fs/promises', () => ({
   writeFile: jest.fn(),
 }));
 
-jest.mock('playwright', () => ({
-  chromium: {
-    launch: (...args: unknown[]) => browserLaunchMock(...args),
-  },
-}), { virtual: true });
+jest.mock(
+  'playwright',
+  () => ({
+    chromium: {
+      launch: (...args: unknown[]) => browserLaunchMock(...args),
+    },
+  }),
+  { virtual: true },
+);
 
 describe('GovCyPdfDownloaderService', () => {
   let service: GovCyPdfDownloaderService;
@@ -66,7 +70,8 @@ describe('GovCyPdfDownloaderService', () => {
 
   it('downloads pdf via browser download event when available', async () => {
     const result = await service.downloadPdfToPath({
-      pdfUrl: 'https://www.gov.cy/app/uploads/sites/26/2026/04/HOTELS_POLIS_8.4.2026.pdf',
+      pdfUrl:
+        'https://www.gov.cy/app/uploads/sites/26/2026/04/HOTELS_POLIS_8.4.2026.pdf',
       targetPath: '/tmp/HOTELS_POLIS_8.4.2026.pdf',
       timeoutMs: 90000,
     });
@@ -75,7 +80,9 @@ describe('GovCyPdfDownloaderService', () => {
       args: ['--no-sandbox', '--disable-dev-shm-usage'],
       headless: true,
     });
-    expect(downloadSaveAsMock).toHaveBeenCalledWith('/tmp/HOTELS_POLIS_8.4.2026.pdf');
+    expect(downloadSaveAsMock).toHaveBeenCalledWith(
+      '/tmp/HOTELS_POLIS_8.4.2026.pdf',
+    );
     expect(readFileMock).toHaveBeenCalledWith('/tmp/HOTELS_POLIS_8.4.2026.pdf');
     expect(result).toEqual({
       bytes: Buffer.from('downloaded-pdf'),
@@ -90,12 +97,15 @@ describe('GovCyPdfDownloaderService', () => {
       .mockRejectedValueOnce(new Error('page.goto: Download is starting'));
 
     const result = await service.downloadPdfToPath({
-      pdfUrl: 'https://www.gov.cy/app/uploads/sites/26/2026/04/HOTELS_POLIS_8.4.2026.pdf',
+      pdfUrl:
+        'https://www.gov.cy/app/uploads/sites/26/2026/04/HOTELS_POLIS_8.4.2026.pdf',
       targetPath: '/tmp/HOTELS_POLIS_8.4.2026.pdf',
       timeoutMs: 90000,
     });
 
-    expect(downloadSaveAsMock).toHaveBeenCalledWith('/tmp/HOTELS_POLIS_8.4.2026.pdf');
+    expect(downloadSaveAsMock).toHaveBeenCalledWith(
+      '/tmp/HOTELS_POLIS_8.4.2026.pdf',
+    );
     expect(result).toEqual({
       bytes: Buffer.from('downloaded-pdf'),
       method: PDF_DOWNLOAD_METHOD.DOWNLOAD,
@@ -112,7 +122,8 @@ describe('GovCyPdfDownloaderService', () => {
     });
 
     const result = await service.downloadPdfToPath({
-      pdfUrl: 'https://www.gov.cy/app/uploads/sites/26/2026/04/HOTELS_POLIS_8.4.2026.pdf',
+      pdfUrl:
+        'https://www.gov.cy/app/uploads/sites/26/2026/04/HOTELS_POLIS_8.4.2026.pdf',
       targetPath: '/tmp/HOTELS_POLIS_8.4.2026.pdf',
       timeoutMs: 90000,
     });

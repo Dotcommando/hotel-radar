@@ -3,7 +3,7 @@ import { ParsedFilesService } from '../../parsed-files/parsed-files.service';
 import { IParsedFile } from '../../parsed-files/types/parsed-file.interface';
 import { RawHotelsService } from '../../raw-hotels/raw-hotels.service';
 import { GOV_CY_PDF_HOTELS_CONFIG } from '../constants/gov-cy-pdf-hotels-config.constant';
-import { GovCyPdfHotelsService } from '../gov-cy-pdf-hotels.service';
+import { GovCyPdfHotelsService } from '../services';
 import { IGovCyPdfParsedFileResult } from '../types/gov-cy-pdf-parsed-file-result.interface';
 import { IGovCyPdfParsingResult } from '../types/gov-cy-pdf-parsing-result.interface';
 import type { IGovCyPdfHotelsConfig } from '../types/gov-cy-pdf-hotels-config.interface';
@@ -22,7 +22,9 @@ export class RunGovCyPdfParsingUseCase {
 
   async execute(): Promise<IGovCyPdfParsingResult> {
     if (this.inFlightExecution !== null) {
-      console.log('[RunGovCyPdfParsingUseCase] reusing in-flight parsing execution');
+      console.log(
+        '[RunGovCyPdfParsingUseCase] reusing in-flight parsing execution',
+      );
       return this.inFlightExecution;
     }
 
@@ -38,13 +40,17 @@ export class RunGovCyPdfParsingUseCase {
 
   private async runParsing(): Promise<IGovCyPdfParsingResult> {
     console.log('[RunGovCyPdfParsingUseCase] discovering PDF files');
-    const discoveredPdfFiles = await this.govCyPdfHotelsService.discoverPdfFiles();
+    const discoveredPdfFiles =
+      await this.govCyPdfHotelsService.discoverPdfFiles();
     const sourceFileNames = discoveredPdfFiles.map(({ filename }) => filename);
-    const cachedParsedFilesMap = await this.readCachedParsedFilesMap(sourceFileNames);
+    const cachedParsedFilesMap =
+      await this.readCachedParsedFilesMap(sourceFileNames);
     const files: IGovCyPdfParsedFileResult[] = [];
 
     for (const discoveredPdfFile of discoveredPdfFiles) {
-      const cachedParsedFile = cachedParsedFilesMap.get(discoveredPdfFile.filename);
+      const cachedParsedFile = cachedParsedFilesMap.get(
+        discoveredPdfFile.filename,
+      );
 
       if (cachedParsedFile !== undefined) {
         console.log(
@@ -61,13 +67,14 @@ export class RunGovCyPdfParsingUseCase {
         `[RunGovCyPdfParsingUseCase] processing file filename=${discoveredPdfFile.filename}`,
       );
 
-      const downloadedPdfFiles = await this.govCyPdfHotelsService.downloadPdfFiles([
-        discoveredPdfFile,
-      ]);
+      const downloadedPdfFiles =
+        await this.govCyPdfHotelsService.downloadPdfFiles([discoveredPdfFile]);
       const parsedRecords = await this.govCyPdfHotelsService.parsePdfFiles(
         downloadedPdfFiles,
         async (parsedBatch) => {
-          await this.rawHotelsService.upsertManyByStrictHotelDedupeKeyAndSourceFileName(parsedBatch);
+          await this.rawHotelsService.upsertManyByStrictHotelDedupeKeyAndSourceFileName(
+            parsedBatch,
+          );
         },
       );
 
@@ -101,18 +108,22 @@ export class RunGovCyPdfParsingUseCase {
     fileNames: string[],
   ): Promise<Map<string, IParsedFile>> {
     const parsedAtFrom = new Date(Date.now() - this.config.parsingCacheTimeMs);
-    const cachedParsedFiles = await this.parsedFilesService.readManyByFileNamesAndParsedAtFrom(
-      fileNames,
-      parsedAtFrom,
-    );
+    const cachedParsedFiles =
+      await this.parsedFilesService.readManyByFileNamesAndParsedAtFrom(
+        fileNames,
+        parsedAtFrom,
+      );
     const cachedParsedFilesMap = new Map<string, IParsedFile>();
 
     for (const cachedParsedFile of cachedParsedFiles) {
-      const existingParsedFile = cachedParsedFilesMap.get(cachedParsedFile.filename);
+      const existingParsedFile = cachedParsedFilesMap.get(
+        cachedParsedFile.filename,
+      );
 
       if (
-        existingParsedFile === undefined
-        || existingParsedFile.parsedAt.getTime() < cachedParsedFile.parsedAt.getTime()
+        existingParsedFile === undefined ||
+        existingParsedFile.parsedAt.getTime() <
+          cachedParsedFile.parsedAt.getTime()
       ) {
         cachedParsedFilesMap.set(cachedParsedFile.filename, cachedParsedFile);
       }

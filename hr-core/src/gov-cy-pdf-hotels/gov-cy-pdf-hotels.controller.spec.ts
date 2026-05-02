@@ -1,25 +1,28 @@
 import { Test, TestingModule } from '@nestjs/testing';
+import { ConflictException } from '@nestjs/common';
 import { GovCyPdfHotelsController } from './gov-cy-pdf-hotels.controller';
-import { RunGovCyPdfParsingUseCase } from './use-cases/run-gov-cy-pdf-parsing.use-case';
-import { IGovCyPdfParsingResult } from './types/gov-cy-pdf-parsing-result.interface';
+import { HOTEL_PROCESSING_RUN_STATUS } from '../hotel-processing/constants/hotel-processing-run-status.enum';
+import { HOTEL_PROCESSING_STAGE } from '../hotel-processing/constants/hotel-processing-stage.enum';
+import { HotelProcessingActiveRunExistsError } from '../hotel-processing/errors/hotel-processing-active-run-exists.error';
+import { IStartHotelProcessingRunResult } from '../hotel-processing/types/start-hotel-processing-run-result.interface';
+import { StartGovCyPdfParsingRunUseCase } from './use-cases/start-gov-cy-pdf-parsing-run.use-case';
 
 describe('GovCyPdfHotelsController', () => {
   let controller: GovCyPdfHotelsController;
-  let runGovCyPdfParsingUseCase: {
-    execute: jest.Mock<Promise<IGovCyPdfParsingResult>, []>;
+  let startGovCyPdfParsingRunUseCase: {
+    execute: jest.Mock<Promise<IStartHotelProcessingRunResult>, []>;
   };
 
-  const parsingResultFixture: IGovCyPdfParsingResult = {
-    files: [
-      {
-        filename: 'HOTELS_POLIS_8.4.2026.pdf',
-        recordsCount: 28,
-      },
-    ],
+  const startRunResultFixture: IStartHotelProcessingRunResult = {
+    batchSize: 1,
+    ok: true,
+    runId: '2026-05-02T18-30-00-gov-cy-pdf-parse',
+    stage: HOTEL_PROCESSING_STAGE.GOV_CY_PDF_PARSE,
+    status: HOTEL_PROCESSING_RUN_STATUS.QUEUED,
   };
 
   beforeEach(async () => {
-    runGovCyPdfParsingUseCase = {
+    startGovCyPdfParsingRunUseCase = {
       execute: jest.fn(),
     };
 
@@ -27,8 +30,8 @@ describe('GovCyPdfHotelsController', () => {
       controllers: [GovCyPdfHotelsController],
       providers: [
         {
-          provide: RunGovCyPdfParsingUseCase,
-          useValue: runGovCyPdfParsingUseCase,
+          provide: StartGovCyPdfParsingRunUseCase,
+          useValue: startGovCyPdfParsingRunUseCase,
         },
       ],
     }).compile();
@@ -36,12 +39,24 @@ describe('GovCyPdfHotelsController', () => {
     controller = module.get<GovCyPdfHotelsController>(GovCyPdfHotelsController);
   });
 
-  it('runs gov cy pdf parsing via post endpoint', async () => {
-    runGovCyPdfParsingUseCase.execute.mockResolvedValue(parsingResultFixture);
+  it('starts gov cy pdf parsing run via post endpoint', async () => {
+    startGovCyPdfParsingRunUseCase.execute.mockResolvedValue(
+      startRunResultFixture,
+    );
 
     const result = await controller.parseGovCyPdfHotels();
 
-    expect(runGovCyPdfParsingUseCase.execute).toHaveBeenCalledTimes(1);
-    expect(result).toEqual(parsingResultFixture);
+    expect(startGovCyPdfParsingRunUseCase.execute).toHaveBeenCalledTimes(1);
+    expect(result).toEqual(startRunResultFixture);
+  });
+
+  it('maps active parsing run to conflict response', async () => {
+    startGovCyPdfParsingRunUseCase.execute.mockRejectedValue(
+      new HotelProcessingActiveRunExistsError(),
+    );
+
+    await expect(controller.parseGovCyPdfHotels()).rejects.toBeInstanceOf(
+      ConflictException,
+    );
   });
 });

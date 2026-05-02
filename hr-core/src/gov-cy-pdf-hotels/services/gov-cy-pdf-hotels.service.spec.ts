@@ -3,24 +3,26 @@ import * as fsPromises from 'node:fs/promises';
 import { join } from 'node:path';
 import { Test, TestingModule } from '@nestjs/testing';
 import { PDFDocument } from 'pdf-lib';
-import { GOV_CY_PDF_HOTELS_CONFIG } from './constants/gov-cy-pdf-hotels-config.constant';
-import { PDF_DISCOVERY_PAGE_FUNCTION } from './constants/pdf-discovery-page-function.constant';
-import { PDF_DOWNLOAD_METHOD } from './constants/pdf-download-method.constant';
+import { GOV_CY_PDF_HOTELS_CONFIG } from '../constants/gov-cy-pdf-hotels-config.constant';
+import { PDF_DISCOVERY_PAGE_FUNCTION } from '../constants/pdf-discovery-page-function.constant';
+import { PDF_DOWNLOAD_METHOD } from '../constants/pdf-download-method.constant';
 import { GovCyPdfDownloaderService } from './gov-cy-pdf-downloader.service';
 import { GovCyPdfHotelsService } from './gov-cy-pdf-hotels.service';
-import { PromptsService } from '../prompts/prompts.service';
-import { PROMPT_TYPE } from '../prompts/constants/prompt-type.enum';
-import { IGovCyPdfHotelsConfig } from './types/gov-cy-pdf-hotels-config.interface';
-import { IDownloadedGovCyPdfFile } from './types/downloaded-gov-cy-pdf-file.interface';
-import { IDiscoveredGovCyPdfFile } from './types/discovered-gov-cy-pdf-file.interface';
-import { IRecognizedGovCyHotelRecord } from './types/recognized-gov-cy-hotel-record.interface';
-import { IPrompt } from '../prompts/types/prompt.interface';
+import { PromptsService } from '../../prompts/prompts.service';
+import { PROMPT_TYPE } from '../../prompts/constants/prompt-type.enum';
+import { IGovCyPdfHotelsConfig } from '../types/gov-cy-pdf-hotels-config.interface';
+import { IDownloadedGovCyPdfFile } from '../types/downloaded-gov-cy-pdf-file.interface';
+import { IDiscoveredGovCyPdfFile } from '../types/discovered-gov-cy-pdf-file.interface';
+import { IRecognizedGovCyHotelRecord } from '../types/recognized-gov-cy-hotel-record.interface';
+import { IPrompt } from '../../prompts/types/prompt.interface';
 
 jest.mock('node:fs/promises', () => ({
   access: jest.fn(),
   chmod: jest.fn(),
+  copyFile: jest.fn(),
   mkdir: jest.fn(),
   readFile: jest.fn(),
+  rm: jest.fn(),
   unlink: jest.fn(),
   writeFile: jest.fn(),
 }));
@@ -67,19 +69,22 @@ describe('GovCyPdfHotelsService', () => {
     apifyActorId: 'apify~web-scraper',
     apifyToken: 'apify-token',
     downloadTimeoutMs: 90000,
-    govCyHotelsPageUrl: 'https://www.gov.cy/tourism/en/documents/hotels-and-other-tourist-establishments-list/',
+    govCyHotelsPageUrl:
+      'https://www.gov.cy/tourism/en/documents/hotels-and-other-tourist-establishments-list/',
     openAiApiKey: 'openai-key',
     openAiModel: 'gpt-4.1',
     openAiResponsesTimeoutMs: 360000,
     parsingCacheTimeMs: 60000,
     storageDirectoryPath: '/tmp/hr-core-pdf-files',
+    tmpDirectoryPath: '/tmp/hr-core-pdf-tmp',
   };
 
   const discoveredPdfFileFixture: IDiscoveredGovCyPdfFile = {
     collectedAt: '2026-04-21T08:00:00.000Z',
     docType: 'gov_list',
     filename: 'POLIS_HOTELS_16.2.2026.pdf',
-    pdfUrl: 'https://www.gov.cy/app/uploads/sites/26/2026/02/POLIS_HOTELS_16.2.2026.pdf',
+    pdfUrl:
+      'https://www.gov.cy/app/uploads/sites/26/2026/02/POLIS_HOTELS_16.2.2026.pdf',
     publishedAt: '2026-02-16T00:00:00.000Z',
     region: 'POLIS',
   };
@@ -126,11 +131,15 @@ describe('GovCyPdfHotelsService', () => {
   const writeFileMock = jest.mocked(fsPromises.writeFile);
   const readFileMock = jest.mocked(fsPromises.readFile);
   const unlinkMock = jest.mocked(fsPromises.unlink);
+  const rmMock = jest.mocked(fsPromises.rm);
 
   beforeEach(async () => {
     jest.clearAllMocks();
     jest.useFakeTimers().setSystemTime(new Date('2026-04-21T08:00:00.000Z'));
-    global.fetch = jest.fn<Promise<IFetchResponse>, [RequestInfo | URL, RequestInit?]>();
+    global.fetch = jest.fn<
+      Promise<IFetchResponse>,
+      [RequestInfo | URL, RequestInit?]
+    >();
     govCyPdfDownloaderService = {
       downloadPdfToPath: jest.fn(),
     };
@@ -165,21 +174,20 @@ describe('GovCyPdfHotelsService', () => {
   });
 
   it('discovers fallback hotel pdf links via Apify when no pancyprian file is present', async () => {
-    jest.mocked(global.fetch)
-      .mockResolvedValueOnce({
-        json: async () => [
-          {
-            pdfLinks: [
-              '/app/uploads/sites/26/2026/02/POLIS_HOTELS_16.2.2026.pdf',
-              'https://www.gov.cy/app/uploads/sites/26/2026/02/PET_FRIENDLY_16.2.2026.pdf',
-              '/app/uploads/sites/26/2026/02/HOTELS_LARNAKA_1.3.2026.pdf',
-              '/app/uploads/sites/26/2026/02/POLIS_HOTELS_16.2.2026.pdf',
-            ],
-          },
-        ],
-        ok: true,
-        status: 201,
-      });
+    jest.mocked(global.fetch).mockResolvedValueOnce({
+      json: async () => [
+        {
+          pdfLinks: [
+            '/app/uploads/sites/26/2026/02/POLIS_HOTELS_16.2.2026.pdf',
+            'https://www.gov.cy/app/uploads/sites/26/2026/02/PET_FRIENDLY_16.2.2026.pdf',
+            '/app/uploads/sites/26/2026/02/HOTELS_LARNAKA_1.3.2026.pdf',
+            '/app/uploads/sites/26/2026/02/POLIS_HOTELS_16.2.2026.pdf',
+          ],
+        },
+      ],
+      ok: true,
+      status: 201,
+    });
 
     const result = await service.discoverPdfFiles();
 
@@ -216,7 +224,8 @@ describe('GovCyPdfHotelsService', () => {
         collectedAt: '2026-04-21T08:00:00.000Z',
         docType: 'gov_list',
         filename: 'HOTELS_LARNAKA_1.3.2026.pdf',
-        pdfUrl: 'https://www.gov.cy/app/uploads/sites/26/2026/02/HOTELS_LARNAKA_1.3.2026.pdf',
+        pdfUrl:
+          'https://www.gov.cy/app/uploads/sites/26/2026/02/HOTELS_LARNAKA_1.3.2026.pdf',
         publishedAt: '2026-03-01T00:00:00.000Z',
         region: 'LARNAKA',
       },
@@ -224,21 +233,20 @@ describe('GovCyPdfHotelsService', () => {
   });
 
   it('prefers only pancyprian pdf links when they are present', async () => {
-    jest.mocked(global.fetch)
-      .mockResolvedValueOnce({
-        json: async () => [
-          {
-            pdfLinks: [
-              '/app/uploads/sites/26/2026/04/HOTELS_LARNAKA_8.4.2026.pdf',
-              '  /app/uploads/sites/26/2026/04/HOTELS_PANCYPRIAN_8.4.2026.pdf  ',
-              '/app/uploads/sites/26/2026/04/Hotels_Pancyprian_Pet-Friendly_8.4.2026.pdf',
-              '/app/uploads/sites/26/2026/04/Hotels_Pancyprian_Vegan-Friendly_8.4.2026.pdf',
-            ],
-          },
-        ],
-        ok: true,
-        status: 201,
-      });
+    jest.mocked(global.fetch).mockResolvedValueOnce({
+      json: async () => [
+        {
+          pdfLinks: [
+            '/app/uploads/sites/26/2026/04/HOTELS_LARNAKA_8.4.2026.pdf',
+            '  /app/uploads/sites/26/2026/04/HOTELS_PANCYPRIAN_8.4.2026.pdf  ',
+            '/app/uploads/sites/26/2026/04/Hotels_Pancyprian_Pet-Friendly_8.4.2026.pdf',
+            '/app/uploads/sites/26/2026/04/Hotels_Pancyprian_Vegan-Friendly_8.4.2026.pdf',
+          ],
+        },
+      ],
+      ok: true,
+      status: 201,
+    });
 
     const result = await service.discoverPdfFiles();
 
@@ -247,7 +255,8 @@ describe('GovCyPdfHotelsService', () => {
         collectedAt: '2026-04-21T08:00:00.000Z',
         docType: 'gov_list',
         filename: 'HOTELS_PANCYPRIAN_8.4.2026.pdf',
-        pdfUrl: 'https://www.gov.cy/app/uploads/sites/26/2026/04/HOTELS_PANCYPRIAN_8.4.2026.pdf',
+        pdfUrl:
+          'https://www.gov.cy/app/uploads/sites/26/2026/04/HOTELS_PANCYPRIAN_8.4.2026.pdf',
         publishedAt: '2026-04-08T00:00:00.000Z',
         region: 'PANCYPRIAN',
       },
@@ -257,9 +266,14 @@ describe('GovCyPdfHotelsService', () => {
   it('ensures the storage directory exists and is writable', async () => {
     const result = await service.ensureStorageDirectoryIsWritable();
 
-    expect(mkdirMock).toHaveBeenCalledWith(config.storageDirectoryPath, { recursive: true });
+    expect(mkdirMock).toHaveBeenCalledWith(config.storageDirectoryPath, {
+      recursive: true,
+    });
     expect(chmodMock).toHaveBeenCalledWith(config.storageDirectoryPath, 0o775);
-    expect(accessMock).toHaveBeenCalledWith(config.storageDirectoryPath, constants.W_OK);
+    expect(accessMock).toHaveBeenCalledWith(
+      config.storageDirectoryPath,
+      constants.W_OK,
+    );
     expect(result).toBe(config.storageDirectoryPath);
   });
 
@@ -271,10 +285,15 @@ describe('GovCyPdfHotelsService', () => {
 
     const result = await service.downloadPdfFiles([discoveredPdfFileFixture]);
 
-    expect(mkdirMock).toHaveBeenCalledWith(config.storageDirectoryPath, { recursive: true });
-    expect(mkdirMock).toHaveBeenCalledWith(join(config.storageDirectoryPath, '2026-02-16'), {
+    expect(mkdirMock).toHaveBeenCalledWith(config.storageDirectoryPath, {
       recursive: true,
     });
+    expect(mkdirMock).toHaveBeenCalledWith(
+      join(config.storageDirectoryPath, '2026-02-16'),
+      {
+        recursive: true,
+      },
+    );
     expect(govCyPdfDownloaderService.downloadPdfToPath).toHaveBeenCalledWith({
       pdfUrl: discoveredPdfFileFixture.pdfUrl,
       targetPath: downloadedPdfFileFixture.localPath,
@@ -301,7 +320,8 @@ describe('GovCyPdfHotelsService', () => {
         updatedAt: new Date('2026-04-21T00:00:00.000Z'),
         version: 1,
       });
-    jest.mocked(global.fetch)
+    jest
+      .mocked(global.fetch)
       .mockResolvedValueOnce({
         json: async () => ({ id: 'file_123' }),
         ok: true,
@@ -355,7 +375,9 @@ describe('GovCyPdfHotelsService', () => {
 
     const result = await service.parsePdfFiles([downloadedPdfFileFixture]);
 
-    expect(readFileMock).toHaveBeenCalledWith(downloadedPdfFileFixture.localPath);
+    expect(readFileMock).toHaveBeenCalledWith(
+      downloadedPdfFileFixture.localPath,
+    );
     expect(global.fetch).toHaveBeenNthCalledWith(
       1,
       'https://api.openai.com/v1/files',
@@ -382,7 +404,9 @@ describe('GovCyPdfHotelsService', () => {
     expect(jest.mocked(global.fetch).mock.calls[1]?.[1]?.body).toEqual(
       expect.stringContaining('User prompt from db'),
     );
-    expect(JSON.parse(String(jest.mocked(global.fetch).mock.calls[1]?.[1]?.body))).toEqual(
+    expect(
+      JSON.parse(String(jest.mocked(global.fetch).mock.calls[1]?.[1]?.body)),
+    ).toEqual(
       expect.objectContaining({
         background: true,
         store: true,
@@ -394,6 +418,165 @@ describe('GovCyPdfHotelsService', () => {
         createdAt: new Date('2026-04-21T08:00:00.000Z'),
       },
     ]);
+  });
+
+  it('writes background parsing chunks under the run tmp directory and uploads from paths only', async () => {
+    const largePdfBytes = await buildPdfBuffer(9);
+    const fileBytesByPath = new Map<string, Buffer>([
+      [downloadedPdfFileFixture.localPath, largePdfBytes],
+    ]);
+
+    readFileMock.mockImplementation(async (filePath) => {
+      const fileBytes = fileBytesByPath.get(String(filePath));
+
+      if (fileBytes === undefined) {
+        throw new Error(`Unexpected readFile path: ${String(filePath)}`);
+      }
+
+      return fileBytes;
+    });
+    writeFileMock.mockImplementation(async (filePath, fileBytes) => {
+      fileBytesByPath.set(
+        String(filePath),
+        Buffer.from(fileBytes as Uint8Array),
+      );
+    });
+    promptsService.readLatestByType
+      .mockResolvedValueOnce({
+        content: 'System prompt from db',
+        createdAt: new Date('2026-04-21T00:00:00.000Z'),
+        type: PROMPT_TYPE.GOV_CY_PDF_PARSE_SYSTEM,
+        updatedAt: new Date('2026-04-21T00:00:00.000Z'),
+        version: 1,
+      })
+      .mockResolvedValueOnce({
+        content: 'User prompt from db',
+        createdAt: new Date('2026-04-21T00:00:00.000Z'),
+        type: PROMPT_TYPE.GOV_CY_PDF_PARSE_USER,
+        updatedAt: new Date('2026-04-21T00:00:00.000Z'),
+        version: 1,
+      });
+    jest
+      .mocked(global.fetch)
+      .mockResolvedValueOnce({
+        json: async () => ({ id: 'file_1' }),
+        ok: true,
+        status: 200,
+      })
+      .mockResolvedValueOnce({
+        json: async () => ({
+          id: 'resp_1',
+          output: [
+            {
+              content: [
+                {
+                  text: JSON.stringify({ hotels: [] }),
+                  type: 'output_text',
+                },
+              ],
+            },
+          ],
+          status: 'completed',
+        }),
+        ok: true,
+        status: 200,
+      })
+      .mockResolvedValueOnce({
+        json: async () => ({ id: 'file_2' }),
+        ok: true,
+        status: 200,
+      })
+      .mockResolvedValueOnce({
+        json: async () => ({
+          id: 'resp_2',
+          output: [
+            {
+              content: [
+                {
+                  text: JSON.stringify({ hotels: [] }),
+                  type: 'output_text',
+                },
+              ],
+            },
+          ],
+          status: 'completed',
+        }),
+        ok: true,
+        status: 200,
+      });
+
+    const onParsedBatch = jest
+      .fn<Promise<void>, [IRecognizedGovCyHotelRecord[]]>()
+      .mockResolvedValue();
+    const onChunksPrepared = jest
+      .fn<Promise<void>, [number]>()
+      .mockResolvedValue();
+    const onChunkProcessed = jest
+      .fn<
+        Promise<void>,
+        [
+          {
+            chunkIndex: number;
+            chunkTotal: number;
+            recordsCount: number;
+          },
+        ]
+      >()
+      .mockResolvedValue();
+    const result = await service.parsePdfFileToBatches({
+      downloadedPdfFile: downloadedPdfFileFixture,
+      onChunkProcessed,
+      onChunksPrepared,
+      onParsedBatch,
+      runTmpDirectoryPath: '/tmp/hr-core-pdf-tmp/run-1',
+    });
+
+    expect(writeFileMock).toHaveBeenCalledTimes(2);
+    expect(Array.from(fileBytesByPath.keys())).toEqual(
+      expect.arrayContaining([
+        '/tmp/hr-core-pdf-tmp/run-1/POLIS_HOTELS_16.2.2026.pages-1-5.pdf',
+        '/tmp/hr-core-pdf-tmp/run-1/POLIS_HOTELS_16.2.2026.pages-5-9.pdf',
+      ]),
+    );
+    expect(readFileMock).toHaveBeenCalledWith(
+      '/tmp/hr-core-pdf-tmp/run-1/POLIS_HOTELS_16.2.2026.pages-1-5.pdf',
+    );
+    expect(readFileMock).toHaveBeenCalledWith(
+      '/tmp/hr-core-pdf-tmp/run-1/POLIS_HOTELS_16.2.2026.pages-5-9.pdf',
+    );
+    expect(unlinkMock).not.toHaveBeenCalled();
+    expect(onChunksPrepared).toHaveBeenCalledWith(2);
+    expect(onChunkProcessed).toHaveBeenCalledWith({
+      chunkIndex: 1,
+      chunkTotal: 2,
+      recordsCount: 0,
+    });
+    expect(onChunkProcessed).toHaveBeenCalledWith({
+      chunkIndex: 2,
+      chunkTotal: 2,
+      recordsCount: 0,
+    });
+    expect(onParsedBatch).not.toHaveBeenCalled();
+    expect(result).toBe(0);
+  });
+
+  it('creates and removes a run-scoped tmp directory', async () => {
+    mkdirMock.mockResolvedValue(undefined);
+    chmodMock.mockResolvedValue(undefined);
+    accessMock.mockResolvedValue(undefined);
+    rmMock.mockResolvedValue(undefined);
+
+    const tmpDirectoryPath = await service.prepareParsingTmpDirectory('run-1');
+    await service.cleanupParsingTmpDirectory('run-1');
+
+    expect(tmpDirectoryPath).toBe('/tmp/hr-core-pdf-tmp/run-1');
+    expect(mkdirMock).toHaveBeenCalledWith('/tmp/hr-core-pdf-tmp/run-1', {
+      recursive: true,
+    });
+    expect(rmMock).toHaveBeenCalledWith('/tmp/hr-core-pdf-tmp/run-1', {
+      force: true,
+      recursive: true,
+    });
   });
 
   it('splits large pdf files into overlapping chunks before parsing', async () => {
@@ -412,7 +595,10 @@ describe('GovCyPdfHotelsService', () => {
       return fileBytes;
     });
     writeFileMock.mockImplementation(async (filePath, fileBytes) => {
-      fileBytesByPath.set(String(filePath), Buffer.from(fileBytes as Uint8Array));
+      fileBytesByPath.set(
+        String(filePath),
+        Buffer.from(fileBytes as Uint8Array),
+      );
     });
     unlinkMock.mockResolvedValue(undefined);
     promptsService.readLatestByType
@@ -430,7 +616,8 @@ describe('GovCyPdfHotelsService', () => {
         updatedAt: new Date('2026-04-21T00:00:00.000Z'),
         version: 1,
       });
-    jest.mocked(global.fetch)
+    jest
+      .mocked(global.fetch)
       .mockResolvedValueOnce({
         json: async () => ({ id: 'file_1' }),
         ok: true,
@@ -457,7 +644,8 @@ describe('GovCyPdfHotelsService', () => {
                           phones: recognizedHotelFixture.contacts.phones,
                           websites: ['www.anassa.com'],
                         },
-                        establishmentType: recognizedHotelFixture.establishmentType,
+                        establishmentType:
+                          recognizedHotelFixture.establishmentType,
                         licenseStatus: recognizedHotelFixture.licenseStatus,
                         locality: recognizedHotelFixture.locality,
                         managerName: recognizedHotelFixture.managerName,
@@ -507,7 +695,8 @@ describe('GovCyPdfHotelsService', () => {
                           phones: recognizedHotelFixture.contacts.phones,
                           websites: ['www.anassa.com'],
                         },
-                        establishmentType: recognizedHotelFixture.establishmentType,
+                        establishmentType:
+                          recognizedHotelFixture.establishmentType,
                         licenseStatus: recognizedHotelFixture.licenseStatus,
                         locality: recognizedHotelFixture.locality,
                         managerName: recognizedHotelFixture.managerName,
@@ -532,9 +721,14 @@ describe('GovCyPdfHotelsService', () => {
         status: 200,
       });
 
-    const onParsedBatch = jest.fn<Promise<void>, [IRecognizedGovCyHotelRecord[]]>().mockResolvedValue();
+    const onParsedBatch = jest
+      .fn<Promise<void>, [IRecognizedGovCyHotelRecord[]]>()
+      .mockResolvedValue();
 
-    const result = await service.parsePdfFiles([downloadedPdfFileFixture], onParsedBatch);
+    const result = await service.parsePdfFiles(
+      [downloadedPdfFileFixture],
+      onParsedBatch,
+    );
 
     expect(writeFileMock).toHaveBeenCalledTimes(2);
     expect(Array.from(fileBytesByPath.keys())).toEqual(
@@ -581,7 +775,8 @@ describe('GovCyPdfHotelsService', () => {
         updatedAt: new Date('2026-04-21T00:00:00.000Z'),
         version: 1,
       });
-    jest.mocked(global.fetch)
+    jest
+      .mocked(global.fetch)
       .mockResolvedValueOnce({
         json: async () => ({ id: 'file_123' }),
         ok: true,
@@ -616,7 +811,8 @@ describe('GovCyPdfHotelsService', () => {
                           phones: ['+357 26 888 000'],
                           websites: ['www.anassa.com'],
                         },
-                        establishmentType: recognizedHotelFixture.establishmentType,
+                        establishmentType:
+                          recognizedHotelFixture.establishmentType,
                         licenseStatus: recognizedHotelFixture.licenseStatus,
                         locality: recognizedHotelFixture.locality,
                         managerName: recognizedHotelFixture.managerName,
@@ -684,7 +880,8 @@ describe('GovCyPdfHotelsService', () => {
         updatedAt: new Date('2026-04-21T00:00:00.000Z'),
         version: 1,
       });
-    jest.mocked(global.fetch)
+    jest
+      .mocked(global.fetch)
       .mockResolvedValueOnce({
         json: async () => ({ id: 'file_123' }),
         ok: true,
@@ -719,7 +916,8 @@ describe('GovCyPdfHotelsService', () => {
                           phones: ['+357 26 888 000'],
                           websites: ['www.anassa.com'],
                         },
-                        establishmentType: recognizedHotelFixture.establishmentType,
+                        establishmentType:
+                          recognizedHotelFixture.establishmentType,
                         licenseStatus: recognizedHotelFixture.licenseStatus,
                         locality: recognizedHotelFixture.locality,
                         managerName: recognizedHotelFixture.managerName,
@@ -776,7 +974,8 @@ describe('GovCyPdfHotelsService', () => {
         updatedAt: new Date('2026-04-21T00:00:00.000Z'),
         version: 1,
       });
-    jest.mocked(global.fetch)
+    jest
+      .mocked(global.fetch)
       .mockResolvedValueOnce({
         json: async () => ({ id: 'file_123' }),
         ok: true,
@@ -804,7 +1003,8 @@ describe('GovCyPdfHotelsService', () => {
                           phones: ['+357 26 888 000'],
                           websites: ['www.anassa.com'],
                         },
-                        establishmentType: recognizedHotelFixture.establishmentType,
+                        establishmentType:
+                          recognizedHotelFixture.establishmentType,
                         licenseStatus: recognizedHotelFixture.licenseStatus,
                         locality: recognizedHotelFixture.locality,
                         managerName: recognizedHotelFixture.managerName,
@@ -874,7 +1074,8 @@ describe('GovCyPdfHotelsService', () => {
         updatedAt: new Date('2026-04-21T00:00:00.000Z'),
         version: 1,
       });
-    jest.mocked(global.fetch)
+    jest
+      .mocked(global.fetch)
       .mockResolvedValueOnce({
         json: async () => ({ id: 'file_123' }),
         ok: true,
@@ -910,7 +1111,8 @@ describe('GovCyPdfHotelsService', () => {
                           phones: ['+357 26 888 000'],
                           websites: ['www.anassa.com'],
                         },
-                        establishmentType: recognizedHotelFixture.establishmentType,
+                        establishmentType:
+                          recognizedHotelFixture.establishmentType,
                         licenseStatus: recognizedHotelFixture.licenseStatus,
                         locality: recognizedHotelFixture.locality,
                         managerName: recognizedHotelFixture.managerName,
@@ -980,7 +1182,8 @@ describe('GovCyPdfHotelsService', () => {
         updatedAt: new Date('2026-04-21T00:00:00.000Z'),
         version: 1,
       });
-    jest.mocked(global.fetch)
+    jest
+      .mocked(global.fetch)
       .mockResolvedValueOnce({
         json: async () => ({ id: 'file_123' }),
         ok: true,
@@ -1015,8 +1218,8 @@ describe('GovCyPdfHotelsService', () => {
                         licenseStatus: 'P',
                         locality: 'Anogyra',
                         managerName: 'Mr Nicos Makrides',
-                        name: 'NICOLAS & MARIA\'S COTTAGE',
-                        nameNormalized: 'NICOLAS & MARIA\'S COTTAGE',
+                        name: "NICOLAS & MARIA'S COTTAGE",
+                        nameNormalized: "NICOLAS & MARIA'S COTTAGE",
                         operatorName: 'Mr Nicos Makrides',
                         postcode: '4603',
                         region: 'LIMASSOL',
@@ -1045,10 +1248,7 @@ describe('GovCyPdfHotelsService', () => {
         classRaw: 'N/A',
         contacts: {
           domain: 'anogyravillage.cy',
-          emails: [
-            'info@cyprusvillagehouses.net',
-            'soulibeach@cytanet.com.cy',
-          ],
+          emails: ['info@cyprusvillagehouses.net', 'soulibeach@cytanet.com.cy'],
           faxes: ['+357 25 736 792'],
           phones: ['+357 99 525 462'],
           websites: [
@@ -1062,8 +1262,8 @@ describe('GovCyPdfHotelsService', () => {
         licenseStatus: 'P',
         locality: 'Anogyra',
         managerName: 'Mr Nicos Makrides',
-        name: 'NICOLAS & MARIA\'S COTTAGE',
-        nameNormalized: 'NICOLAS AND MARIA\'S COTTAGE',
+        name: "NICOLAS & MARIA'S COTTAGE",
+        nameNormalized: "NICOLAS AND MARIA'S COTTAGE",
         operatorName: 'Mr Nicos Makrides',
         postcode: '4603',
         region: 'LIMASSOL',
@@ -1095,7 +1295,8 @@ describe('GovCyPdfHotelsService', () => {
         updatedAt: new Date('2026-04-21T00:00:00.000Z'),
         version: 1,
       });
-    jest.mocked(global.fetch)
+    jest
+      .mocked(global.fetch)
       .mockResolvedValueOnce({
         json: async () => [
           {
@@ -1123,7 +1324,8 @@ describe('GovCyPdfHotelsService', () => {
                         beds: recognizedHotelFixture.beds,
                         classRaw: recognizedHotelFixture.classRaw,
                         contacts: recognizedHotelFixture.contacts,
-                        establishmentType: recognizedHotelFixture.establishmentType,
+                        establishmentType:
+                          recognizedHotelFixture.establishmentType,
                         licenseStatus: recognizedHotelFixture.licenseStatus,
                         locality: recognizedHotelFixture.locality,
                         managerName: recognizedHotelFixture.managerName,

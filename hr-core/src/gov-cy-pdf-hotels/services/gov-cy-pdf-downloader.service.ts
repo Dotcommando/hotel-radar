@@ -1,20 +1,18 @@
 import { readFile, writeFile } from 'node:fs/promises';
 import { Injectable } from '@nestjs/common';
-import {
-  APIRequestContext,
-  chromium,
-  Download,
-} from 'playwright';
-import { PDF_DOWNLOAD_METHOD } from './constants/pdf-download-method.constant';
-import { IDownloadGovCyPdfToPathParams } from './types/download-gov-cy-pdf-to-path-params.interface';
-import { IDownloadGovCyPdfToPathResult } from './types/download-gov-cy-pdf-to-path-result.interface';
+import { APIRequestContext, chromium, Download } from 'playwright';
+import { PDF_DOWNLOAD_METHOD } from '../constants/pdf-download-method.constant';
+import { IDownloadGovCyPdfToPathParams } from '../types/download-gov-cy-pdf-to-path-params.interface';
+import { IDownloadGovCyPdfToPathResult } from '../types/download-gov-cy-pdf-to-path-result.interface';
 
 @Injectable()
 export class GovCyPdfDownloaderService {
   async downloadPdfToPath(
     params: IDownloadGovCyPdfToPathParams,
   ): Promise<IDownloadGovCyPdfToPathResult> {
-    console.log(`[GovCyPdfDownloaderService] starting browser download pdfUrl=${params.pdfUrl}`);
+    console.log(
+      `[GovCyPdfDownloaderService] starting browser download pdfUrl=${params.pdfUrl}`,
+    );
     const browser = await chromium.launch({
       args: ['--no-sandbox', '--disable-dev-shm-usage'],
       headless: true,
@@ -48,7 +46,10 @@ export class GovCyPdfDownloaderService {
       }
 
       try {
-        const result = await this.saveViaDownloadEvent(downloadPromise, params.targetPath);
+        const result = await this.saveViaDownloadEvent(
+          downloadPromise,
+          params.targetPath,
+        );
 
         console.log(
           `[GovCyPdfDownloaderService] download completed via=${result.method} targetPath=${params.targetPath} bytes=${result.bytes.length}`,
@@ -56,9 +57,14 @@ export class GovCyPdfDownloaderService {
 
         return result;
       } catch {
-        console.log('[GovCyPdfDownloaderService] download event unavailable, falling back to context request');
+        console.log(
+          '[GovCyPdfDownloaderService] download event unavailable, falling back to context request',
+        );
 
-        const result = await this.saveViaContextRequest(context.request, params);
+        const result = await this.saveViaContextRequest(
+          context.request,
+          params,
+        );
 
         console.log(
           `[GovCyPdfDownloaderService] download completed via=${result.method} targetPath=${params.targetPath} bytes=${result.bytes.length}`,
@@ -116,9 +122,9 @@ export class GovCyPdfDownloaderService {
     const message = error instanceof Error ? error.message : String(error);
 
     return (
-      message.includes('net::ERR_ABORTED')
-      || message.includes('Navigation aborted')
-      || message.includes('Download is starting')
+      message.includes('net::ERR_ABORTED') ||
+      message.includes('Navigation aborted') ||
+      message.includes('Download is starting')
     );
   }
 

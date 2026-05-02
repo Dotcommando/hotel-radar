@@ -15,12 +15,14 @@ export const OPENAI_REQUEST_RETRY_DELAY_MS = 1000;
 export const DEFAULT_GOV_CY_PDF_PARSING_CACHE_TIME_MS = 43200000;
 
 export const DEFAULT_STORAGE_DIRECTORY_PATH = `${process.cwd()}/data/files`;
+export const DEFAULT_TMP_DIRECTORY_PATH = `${process.cwd()}/tmp/gov-cy-pdf-hotels`;
 
 export const OPENAI_FILES_URL = 'https://api.openai.com/v1/files';
 
 export const OPENAI_RESPONSES_URL = 'https://api.openai.com/v1/responses';
 
-export const OPENAI_INPUT_TOKENS_URL = 'https://api.openai.com/v1/responses/input_tokens';
+export const OPENAI_INPUT_TOKENS_URL =
+  'https://api.openai.com/v1/responses/input_tokens';
 
 export const OPENAI_MODELS_URL = 'https://api.openai.com/v1/models';
 

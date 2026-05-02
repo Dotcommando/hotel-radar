@@ -8,4 +8,5 @@ export interface IGovCyPdfHotelsConfig {
   openAiResponsesTimeoutMs: number;
   parsingCacheTimeMs: number;
   storageDirectoryPath: string;
+  tmpDirectoryPath: string;
 }

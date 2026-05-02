@@ -55,6 +55,22 @@
     },
     {
       "name": "Stage 1. Receive and parse PDF from www.gov.cy",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "const response = pm.response.json();",
+              "",
+              "if (response.runId) {",
+              "  pm.environment.set('runId', response.runId);",
+              "  pm.collectionVariables.set('runId', response.runId);",
+              "}"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
       "request": {
         "auth": {
           "type": "noauth"

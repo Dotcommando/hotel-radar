@@ -1,7 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { GOV_CY_PDF_HOTELS_CONFIG } from './constants/gov-cy-pdf-hotels-config.constant';
+import { GOV_CY_PDF_HOTELS_CONFIG } from '../constants/gov-cy-pdf-hotels-config.constant';
 import { GovCyPdfHotelsStartupService } from './gov-cy-pdf-hotels.startup.service';
-import { IGovCyPdfHotelsConfig } from './types/gov-cy-pdf-hotels-config.interface';
+import { IGovCyPdfHotelsConfig } from '../types/gov-cy-pdf-hotels-config.interface';
 
 interface IFetchResponse {
   ok: boolean;
@@ -17,16 +17,21 @@ describe('GovCyPdfHotelsStartupService', () => {
     apifyActorId: 'apify~web-scraper',
     apifyToken: 'apify-token',
     downloadTimeoutMs: 90000,
-    govCyHotelsPageUrl: 'https://www.gov.cy/tourism/en/documents/hotels-and-other-tourist-establishments-list/',
+    govCyHotelsPageUrl:
+      'https://www.gov.cy/tourism/en/documents/hotels-and-other-tourist-establishments-list/',
     openAiApiKey: 'openai-key',
     openAiModel: 'gpt-4.1',
     openAiResponsesTimeoutMs: 360000,
     parsingCacheTimeMs: 60000,
     storageDirectoryPath: '/tmp/hr-core-pdf-files',
+    tmpDirectoryPath: '/tmp/hr-core-pdf-tmp',
   };
 
   beforeEach(async () => {
-    global.fetch = jest.fn<Promise<IFetchResponse>, [RequestInfo | URL, RequestInit?]>();
+    global.fetch = jest.fn<
+      Promise<IFetchResponse>,
+      [RequestInfo | URL, RequestInit?]
+    >();
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -38,11 +43,14 @@ describe('GovCyPdfHotelsStartupService', () => {
       ],
     }).compile();
 
-    service = module.get<GovCyPdfHotelsStartupService>(GovCyPdfHotelsStartupService);
+    service = module.get<GovCyPdfHotelsStartupService>(
+      GovCyPdfHotelsStartupService,
+    );
   });
 
   it('passes startup checks when Apify and OpenAI are available', async () => {
-    jest.mocked(global.fetch)
+    jest
+      .mocked(global.fetch)
       .mockResolvedValueOnce({
         json: async () => ({ data: { username: 'hotel-radar' } }),
         ok: true,
@@ -54,15 +62,20 @@ describe('GovCyPdfHotelsStartupService', () => {
         status: 200,
       })
       .mockResolvedValueOnce({
-        json: async () => ({ input_tokens: 1, object: 'response.input_tokens' }),
+        json: async () => ({
+          input_tokens: 1,
+          object: 'response.input_tokens',
+        }),
         ok: true,
         status: 200,
       });
 
     const consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation();
-    const processExitSpy = jest.spyOn(process, 'exit').mockImplementation((code?: string | number | null) => {
-      throw new Error(`process.exit:${String(code)}`);
-    });
+    const processExitSpy = jest
+      .spyOn(process, 'exit')
+      .mockImplementation((code?: string | number | null) => {
+        throw new Error(`process.exit:${String(code)}`);
+      });
 
     await expect(service.onModuleInit()).resolves.toBeUndefined();
     expect(consoleErrorSpy).not.toHaveBeenCalled();
@@ -80,9 +93,11 @@ describe('GovCyPdfHotelsStartupService', () => {
     });
 
     const consoleWarnSpy = jest.spyOn(console, 'warn').mockImplementation();
-    const processExitSpy = jest.spyOn(process, 'exit').mockImplementation((code?: string | number | null) => {
-      throw new Error(`process.exit:${String(code)}`);
-    });
+    const processExitSpy = jest
+      .spyOn(process, 'exit')
+      .mockImplementation((code?: string | number | null) => {
+        throw new Error(`process.exit:${String(code)}`);
+      });
 
     await expect(service.onModuleInit()).resolves.toBeUndefined();
     expect(consoleWarnSpy).toHaveBeenCalledWith(
@@ -96,7 +111,8 @@ describe('GovCyPdfHotelsStartupService', () => {
   });
 
   it('logs a warning and keeps startup alive when OpenAI reports insufficient quota', async () => {
-    jest.mocked(global.fetch)
+    jest
+      .mocked(global.fetch)
       .mockResolvedValueOnce({
         json: async () => ({ data: { username: 'hotel-radar' } }),
         ok: true,
@@ -111,7 +127,8 @@ describe('GovCyPdfHotelsStartupService', () => {
         json: async () => ({
           error: {
             code: 'insufficient_quota',
-            message: 'You exceeded your current quota, please check your plan and billing details.',
+            message:
+              'You exceeded your current quota, please check your plan and billing details.',
           },
         }),
         ok: false,
@@ -120,9 +137,11 @@ describe('GovCyPdfHotelsStartupService', () => {
       });
 
     const consoleWarnSpy = jest.spyOn(console, 'warn').mockImplementation();
-    const processExitSpy = jest.spyOn(process, 'exit').mockImplementation((code?: string | number | null) => {
-      throw new Error(`process.exit:${String(code)}`);
-    });
+    const processExitSpy = jest
+      .spyOn(process, 'exit')
+      .mockImplementation((code?: string | number | null) => {
+        throw new Error(`process.exit:${String(code)}`);
+      });
 
     await expect(service.onModuleInit()).resolves.toBeUndefined();
     expect(consoleWarnSpy).toHaveBeenCalledWith(

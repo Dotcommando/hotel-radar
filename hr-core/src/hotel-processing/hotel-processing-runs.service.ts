@@ -106,6 +106,40 @@ export class HotelProcessingRunsService {
       .exec();
   }
 
+  async incrementIgnored(runId: string, ignored: number): Promise<void> {
+    await this.hotelProcessingRunModel
+      .updateOne(
+        {
+          runId,
+        },
+        {
+          $inc: {
+            'stats.ignored': ignored,
+          },
+          $set: {
+            updatedAt: new Date(),
+          },
+        },
+      )
+      .exec();
+  }
+
+  async setTotal(runId: string, total: number): Promise<void> {
+    await this.hotelProcessingRunModel
+      .updateOne(
+        {
+          runId,
+        },
+        {
+          $set: {
+            'stats.total': total,
+            updatedAt: new Date(),
+          },
+        },
+      )
+      .exec();
+  }
+
   async complete(runId: string): Promise<void> {
     await this.hotelProcessingRunModel
       .updateOne(
