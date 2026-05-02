@@ -6,11 +6,17 @@ x-hr-core-service: &hr-core-service
     - ./.env
   environment:
     PORT: "3000"
+    BULLMQ_REDIS_HOST: hr-bullmq-redis
+    BULLMQ_REDIS_PORT: "6379"
+    BULLMQ_REDIS_PASSWORD: ${BULLMQ_REDIS_PASSWORD}
+    BULLMQ_REDIS_DB: ${BULLMQ_REDIS_DB}
     MONGODB_URI: mongodb://${MONGO_INITDB_ROOT_USERNAME}:${MONGO_INITDB_ROOT_PASSWORD}@hr-mongodb:27017/${MONGO_INITDB_DATABASE}?authSource=admin
   volumes:
     - ./hr-core:/opt/hr-core
   depends_on:
     hr-mongodb:
+      condition: service_healthy
+    hr-bullmq-redis:
       condition: service_healthy
   healthcheck:
     test:
@@ -81,6 +87,32 @@ services:
     networks:
       - hr-network
 
+  hr-bullmq-redis:
+    image: redis:8-alpine
+    container_name: hr-bullmq-redis
+    command:
+      - redis-server
+      - --appendonly
+      - "yes"
+      - --requirepass
+      - ${BULLMQ_REDIS_PASSWORD}
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - redis-cli -a "$$BULLMQ_REDIS_PASSWORD" ping | grep PONG
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    environment:
+      BULLMQ_REDIS_PASSWORD: ${BULLMQ_REDIS_PASSWORD}
+    ports:
+      - "${BULLMQ_REDIS_HOST_PORT}:6379"
+    volumes:
+      - hr-bullmq-redis-data:/data
+    networks:
+      - hr-network
+
 networks:
   hr-network:
     name: hr-network
@@ -88,3 +120,4 @@ networks:
 volumes:
   hr-core-blue-node-modules:
   hr-core-green-node-modules:
+  hr-bullmq-redis-data:
