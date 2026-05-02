@@ -1,4 +1,5 @@
 import {
+  makeAddressMergeHotelDedupeKey,
   makeNameMatchKey,
   makeSoftHotelDuplicateCandidateKey,
   makeStrictHotelDedupeKey,
@@ -7,14 +8,20 @@ import {
 
 describe('hotelIdentityUtil', () => {
   it('normalizes hotel names with trailing class markers removed', () => {
-    expect(normalizeHotelName('THE SENDAL BOUTIQUE N/A')).toBe('THE SENDAL BOUTIQUE');
+    expect(normalizeHotelName('THE SENDAL BOUTIQUE N/A')).toBe(
+      'THE SENDAL BOUTIQUE',
+    );
     expect(normalizeHotelName('ALTIUS BOUTIQUE 2*')).toBe('ALTIUS BOUTIQUE');
-    expect(normalizeHotelName('C & A C\'')).toBe('C AND A');
-    expect(normalizeHotelName('TSOKKOS HOLIDAY NO. 1 B\'')).toBe('TSOKKOS HOLIDAY NO 1');
+    expect(normalizeHotelName("C & A C'")).toBe('C AND A');
+    expect(normalizeHotelName("TSOKKOS HOLIDAY NO. 1 B'")).toBe(
+      'TSOKKOS HOLIDAY NO 1',
+    );
   });
 
   it('keeps meaningful trailing name parts intact', () => {
-    expect(normalizeHotelName('THE SENDAL BOUTIQUE')).toBe('THE SENDAL BOUTIQUE');
+    expect(normalizeHotelName('THE SENDAL BOUTIQUE')).toBe(
+      'THE SENDAL BOUTIQUE',
+    );
     expect(normalizeHotelName('ALTIUS BOUTIQUE')).toBe('ALTIUS BOUTIQUE');
     expect(normalizeHotelName('NATURA BEACH')).toBe('NATURA BEACH');
     expect(normalizeHotelName('SUNRISE GARDENS')).toBe('SUNRISE GARDENS');
@@ -39,7 +46,38 @@ describe('hotelIdentityUtil', () => {
       rooms: 177,
     };
 
-    expect(makeStrictHotelDedupeKey(hotel)).toBe('THE SENDAL BOUTIQUE|8852|+35726888000|177|366');
-    expect(makeSoftHotelDuplicateCandidateKey(hotel)).toBe('SENDAL|8852|+35726888000|177|366');
+    expect(makeStrictHotelDedupeKey(hotel)).toBe(
+      'THE SENDAL BOUTIQUE|8852|+35726888000|177|366',
+    );
+    expect(makeSoftHotelDuplicateCandidateKey(hotel)).toBe(
+      'SENDAL|8852|+35726888000|177|366',
+    );
+  });
+
+  it('builds an address merge key without address or capacity fields', () => {
+    const hotel = {
+      contacts: {
+        phones: ['+357 25 471 900', '+357 25 813 777'],
+      },
+      establishmentType: 'Traditional Houses - Apartments',
+      locality: ' Lofou ',
+      nameNormalized: 'TO APOKRYFO 3',
+      operatorName: 'Vakis Hadjikyriakou Estates Ltd',
+      postcode: ' 4716 ',
+      region: 'Hill Resorts - Lofou',
+    };
+
+    expect(makeAddressMergeHotelDedupeKey(hotel)).toBe(
+      'TO APOKRYFO 3|TRADITIONAL HOUSES - APARTMENTS|HILL RESORTS - LOFOU|LOFOU|4716|VAKIS HADJIKYRIAKOU ESTATES LTD|+35725471900',
+    );
+    expect(
+      makeAddressMergeHotelDedupeKey({
+        ...hotel,
+        contacts: {
+          phones: ['+35725471900'],
+        },
+        nameNormalized: 'TO APOKRYFO 4',
+      }),
+    ).not.toBe(makeAddressMergeHotelDedupeKey(hotel));
   });
 });

@@ -7,12 +7,14 @@ import { ICreateRawHotel } from './types/create-raw-hotel.interface';
 import { IPersistedRawHotel } from './types/persisted-raw-hotel.interface';
 import { IRawHotel } from './types/raw-hotel.interface';
 import {
+  makeAddressMergeHotelDedupeKey,
   makeNameMatchKey,
   makeStrictHotelDedupeKey,
   normalizeHotelName,
 } from './utils/hotel-identity.util';
 
 interface IPersistedRawHotelFields extends ICreateRawHotel {
+  addressMergeDedupeKey: string;
   nameMatchKey: string;
   nameNormalized: string;
   strictHotelDedupeKey: string;
@@ -43,37 +45,28 @@ export class RawHotelsService {
       return 0;
     }
 
-    await this.rawHotelModel.bulkWrite(
-      rawHotels.map((rawHotel) => {
-        const persistedRawHotel = this.buildPersistedRawHotel(rawHotel);
-        const { createdAt, ...rawHotelFields } = persistedRawHotel;
+    for (const rawHotel of rawHotels) {
+      const persistedRawHotel = this.buildPersistedRawHotel(rawHotel);
+      const addressMergeCandidate =
+        await this.readComplementaryAddressMergeCandidate(persistedRawHotel);
 
-        return {
-          updateOne: {
-            filter: {
-              'sourceFile.filename': persistedRawHotel.sourceFile.filename,
-              strictHotelDedupeKey: persistedRawHotel.strictHotelDedupeKey,
-            },
-            update: {
-              $set: rawHotelFields,
-              $setOnInsert: {
-                createdAt: createdAt ?? new Date(),
-                processing: {
-                  claimedAt: null,
-                  error: null,
-                  hotelRegistryEntryId: null,
-                  processedAt: null,
-                  runId: null,
-                  status: HOTEL_PROCESSING_STATUS.PENDING,
-                },
-              },
-            },
-            upsert: true,
-          },
-        };
-      }),
-      { ordered: true },
-    );
+      if (addressMergeCandidate !== null) {
+        if (
+          this.hasAddress(addressMergeCandidate.address) &&
+          !this.hasAddress(persistedRawHotel.address)
+        ) {
+          continue;
+        }
+
+        await this.updateExistingRawHotel(
+          addressMergeCandidate._id,
+          persistedRawHotel,
+        );
+        continue;
+      }
+
+      await this.upsertStrictRawHotel(persistedRawHotel);
+    }
 
     return rawHotels.length;
   }
@@ -85,6 +78,15 @@ export class RawHotelsService {
 
     return {
       ...rawHotel,
+      addressMergeDedupeKey: makeAddressMergeHotelDedupeKey({
+        contacts: rawHotel.contacts,
+        establishmentType: rawHotel.establishmentType,
+        locality: rawHotel.locality,
+        nameNormalized,
+        operatorName: rawHotel.operatorName,
+        postcode: rawHotel.postcode,
+        region: rawHotel.region,
+      }),
       nameMatchKey: makeNameMatchKey(nameNormalized),
       nameNormalized,
       strictHotelDedupeKey: makeStrictHotelDedupeKey({
@@ -95,6 +97,160 @@ export class RawHotelsService {
         rooms: rawHotel.rooms,
       }),
     };
+  }
+
+  private async readComplementaryAddressMergeCandidate(
+    rawHotel: IPersistedRawHotelFields,
+  ): Promise<IPersistedRawHotel | null> {
+    return this.rawHotelModel
+      .findOne(this.buildComplementaryAddressMergeFilter(rawHotel))
+      .sort({
+        _id: 1,
+      })
+      .exec();
+  }
+
+  private buildComplementaryAddressMergeFilter(
+    rawHotel: IPersistedRawHotelFields,
+  ): Record<string, unknown> {
+    return {
+      $and: [
+        {
+          'sourceFile.filename': rawHotel.sourceFile.filename,
+        },
+        this.buildComplementaryAddressFilter(this.hasAddress(rawHotel.address)),
+        {
+          $or: [
+            {
+              addressMergeDedupeKey: rawHotel.addressMergeDedupeKey,
+            },
+            {
+              establishmentType: rawHotel.establishmentType,
+              locality: rawHotel.locality,
+              nameNormalized: rawHotel.nameNormalized,
+              operatorName: rawHotel.operatorName,
+              postcode: rawHotel.postcode,
+              region: rawHotel.region,
+              ...this.buildFirstPhoneFallbackFilter(
+                rawHotel.contacts.phones[0] ?? null,
+              ),
+            },
+          ],
+        },
+      ],
+    };
+  }
+
+  private buildComplementaryAddressFilter(
+    hasAddress: boolean,
+  ): Record<string, unknown> {
+    if (hasAddress) {
+      return {
+        $or: [
+          {
+            address: null,
+          },
+          {
+            address: '',
+          },
+          {
+            address: {
+              $exists: false,
+            },
+          },
+        ],
+      };
+    }
+
+    return {
+      address: {
+        $exists: true,
+        $nin: [null, ''],
+      },
+    };
+  }
+
+  private buildFirstPhoneFallbackFilter(
+    firstPhone: string | null,
+  ): Record<string, unknown> {
+    if (firstPhone === null) {
+      return {
+        'contacts.phones.0': {
+          $exists: false,
+        },
+      };
+    }
+
+    return {
+      'contacts.phones.0': firstPhone,
+    };
+  }
+
+  private async updateExistingRawHotel(
+    rawHotelId: Types.ObjectId,
+    persistedRawHotel: IPersistedRawHotelFields,
+  ): Promise<void> {
+    const { createdAt, ...rawHotelFields } = persistedRawHotel;
+    void createdAt;
+
+    await this.rawHotelModel
+      .updateOne(
+        {
+          _id: rawHotelId,
+        },
+        {
+          $set: rawHotelFields,
+        },
+      )
+      .exec();
+  }
+
+  private async upsertStrictRawHotel(
+    persistedRawHotel: IPersistedRawHotelFields,
+  ): Promise<void> {
+    const { createdAt, ...rawHotelFields } = persistedRawHotel;
+    const setFields = this.hasAddress(persistedRawHotel.address)
+      ? rawHotelFields
+      : this.removeAddressField(rawHotelFields);
+
+    await this.rawHotelModel
+      .updateOne(
+        {
+          'sourceFile.filename': persistedRawHotel.sourceFile.filename,
+          strictHotelDedupeKey: persistedRawHotel.strictHotelDedupeKey,
+        },
+        {
+          $set: setFields,
+          $setOnInsert: {
+            createdAt: createdAt ?? new Date(),
+            processing: {
+              claimedAt: null,
+              error: null,
+              hotelRegistryEntryId: null,
+              processedAt: null,
+              runId: null,
+              status: HOTEL_PROCESSING_STATUS.PENDING,
+            },
+          },
+        },
+        {
+          upsert: true,
+        },
+      )
+      .exec();
+  }
+
+  private removeAddressField(
+    rawHotelFields: Omit<IPersistedRawHotelFields, 'createdAt'>,
+  ): Record<string, unknown> {
+    const { address, ...fieldsWithoutAddress } = rawHotelFields;
+    void address;
+
+    return fieldsWithoutAddress;
+  }
+
+  private hasAddress(address: string | null): boolean {
+    return address !== null && address.trim().length > 0;
   }
 
   async readManyBySourceFileNames(

@@ -10,6 +10,16 @@ interface IHotelForStrictDedupeKey {
   rooms: number | null;
 }
 
+interface IHotelForAddressMergeDedupeKey {
+  contacts: IHotelContactsForIdentity;
+  establishmentType: string | null;
+  locality: string | null;
+  nameNormalized: string;
+  operatorName: string | null;
+  postcode: string | null;
+  region: string | null;
+}
+
 interface IHotelForSoftDuplicateCandidateKey {
   beds: number | null;
   contacts: IHotelContactsForIdentity;
@@ -56,6 +66,20 @@ export function makeStrictHotelDedupeKey(
     normalizePhone(hotel.contacts.phones[0] ?? null),
     normalizeNumber(hotel.rooms),
     normalizeNumber(hotel.beds),
+  ].join('|');
+}
+
+export function makeAddressMergeHotelDedupeKey(
+  hotel: IHotelForAddressMergeDedupeKey,
+): string {
+  return [
+    normalizeHotelName(hotel.nameNormalized),
+    normalizeIdentityText(hotel.establishmentType),
+    normalizeIdentityText(hotel.region),
+    normalizeIdentityText(hotel.locality),
+    normalizePostcode(hotel.postcode),
+    normalizeIdentityText(hotel.operatorName),
+    normalizePhone(hotel.contacts.phones[0] ?? null),
   ].join('|');
 }
 
@@ -112,6 +136,12 @@ function removeGenericSuffixes(tokens: string[]): string[] {
 
 function normalizePostcode(value: string | null): string {
   return value?.replace(/\s+/g, '').trim().toUpperCase() ?? '';
+}
+
+function normalizeIdentityText(value: string | null): string {
+  return (
+    value?.normalize('NFKC').replace(/\s+/g, ' ').trim().toUpperCase() ?? ''
+  );
 }
 
 function normalizePhone(value: string | null): string {

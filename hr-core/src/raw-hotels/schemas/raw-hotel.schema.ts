@@ -97,6 +97,10 @@ const rawHotelProcessingSchema = new Schema(
 
 export const rawHotelSchema = new Schema<IRawHotel>(
   {
+    addressMergeDedupeKey: {
+      required: false,
+      type: String,
+    },
     address: {
       default: null,
       required: false,
@@ -205,3 +209,4 @@ export const rawHotelSchema = new Schema<IRawHotel>(
 rawHotelSchema.index({ 'processing.status': 1, _id: 1 });
 rawHotelSchema.index({ 'processing.runId': 1 });
 rawHotelSchema.index({ 'processing.claimedAt': 1 });
+rawHotelSchema.index({ 'sourceFile.filename': 1, addressMergeDedupeKey: 1 });

@@ -3,6 +3,7 @@ import { IRawHotelProcessing } from './raw-hotel-processing.interface';
 import { IRawHotelSourceFile } from './raw-hotel-source-file.interface';
 
 export interface IRawHotel {
+  addressMergeDedupeKey?: string;
   address: string | null;
   beds: number | null;
   classRaw: string | null;
