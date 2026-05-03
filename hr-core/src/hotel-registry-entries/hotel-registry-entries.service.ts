@@ -28,6 +28,11 @@ interface IRawHotelDocumentLike extends IRawHotel {
   toObject: () => IRawHotel;
 }
 
+export interface IShadowAggregateNumericSuffixGroup {
+  numberedEntries: IHotelRegistryEntry[];
+  shadowAggregateEntries: IHotelRegistryEntry[];
+}
+
 const SHARED_CHAIN_CONTACT_DOMAINS = new Set([
   'atlanticahotels.com',
   'kanikahotels.com',
@@ -302,6 +307,56 @@ export class HotelRegistryEntriesService {
     return [entry];
   }
 
+  async readShadowAggregateNumericSuffixGroup(
+    entry: IHotelRegistryEntry,
+  ): Promise<IShadowAggregateNumericSuffixGroup | null> {
+    if (
+      entry.status !== HOTEL_REGISTRY_ENTRY_STATUS.READY ||
+      entry.name.baseName.trim().length === 0 ||
+      entry.establishmentType === null ||
+      entry.location.postcode === null
+    ) {
+      return null;
+    }
+
+    const entries = await this.hotelRegistryEntryModel
+      .find({
+        establishmentType: entry.establishmentType,
+        'location.postcode': entry.location.postcode,
+        'name.baseName': entry.name.baseName,
+        'processing.status': {
+          $in: [
+            HOTEL_PROCESSING_STATUS.PENDING,
+            HOTEL_PROCESSING_STATUS.CLAIMED,
+            HOTEL_PROCESSING_STATUS.PROCESSED,
+          ],
+        },
+        status: HOTEL_REGISTRY_ENTRY_STATUS.READY,
+      })
+      .sort({
+        _id: 1,
+      })
+      .exec();
+    const numberedEntries = this.sortByName(
+      entries.filter((candidate) => this.hasPureNumericSuffix(candidate)),
+    );
+    const aggregateEntries = entries.filter(
+      (candidate) => candidate.name.suffix === null,
+    );
+    const shadowAggregateEntries = aggregateEntries.filter((candidate) =>
+      this.isShadowAggregateOfNumberedEntries(candidate, numberedEntries),
+    );
+
+    if (numberedEntries.length < 3 || shadowAggregateEntries.length === 0) {
+      return null;
+    }
+
+    return {
+      numberedEntries,
+      shadowAggregateEntries,
+    };
+  }
+
   async readSafeNumericSuffixArtifactGroup(
     entry: IHotelRegistryEntry,
   ): Promise<IHotelRegistryEntry[]> {
@@ -417,6 +472,31 @@ export class HotelRegistryEntriesService {
         },
         {
           $set: {
+            'processing.claimedAt': null,
+            'processing.error': error,
+            'processing.processedAt': new Date(),
+            'processing.status': HOTEL_PROCESSING_STATUS.IGNORED,
+          },
+        },
+      )
+      .exec();
+  }
+
+  async markShadowAggregateIgnored(
+    registryEntryId: Types.ObjectId,
+    error: string,
+  ): Promise<void> {
+    await this.hotelRegistryEntryModel
+      .updateOne(
+        {
+          _id: registryEntryId,
+        },
+        {
+          $addToSet: {
+            issues: 'shadow_aggregate_of_numeric_suffix_group',
+          },
+          $set: {
+            'processing.canonicalHotelCandidateId': null,
             'processing.claimedAt': null,
             'processing.error': error,
             'processing.processedAt': new Date(),
@@ -587,6 +667,119 @@ export class HotelRegistryEntriesService {
       this.hasMeaningfulContactOverlap(left, right) &&
       this.hasStrictNumericSuffixArtifactOperator(left, right)
     );
+  }
+
+  private isShadowAggregateOfNumberedEntries(
+    aggregateEntry: IHotelRegistryEntry,
+    numberedEntries: IHotelRegistryEntry[],
+  ): boolean {
+    if (
+      numberedEntries.length < 3 ||
+      aggregateEntry.capacity.rooms === null ||
+      aggregateEntry.capacity.beds === null
+    ) {
+      return false;
+    }
+
+    const compatibleNumberedEntries = numberedEntries.filter((numberedEntry) =>
+      this.isPotentialShadowAggregatePair(aggregateEntry, numberedEntry),
+    );
+
+    return (
+      compatibleNumberedEntries.length >= 3 &&
+      this.hasCloseAggregateCapacity(aggregateEntry, compatibleNumberedEntries)
+    );
+  }
+
+  private isPotentialShadowAggregatePair(
+    aggregateEntry: IHotelRegistryEntry,
+    numberedEntry: IHotelRegistryEntry,
+  ): boolean {
+    return (
+      aggregateEntry.name.suffix === null &&
+      this.hasPureNumericSuffix(numberedEntry) &&
+      aggregateEntry.name.baseName === numberedEntry.name.baseName &&
+      aggregateEntry.establishmentType === numberedEntry.establishmentType &&
+      this.hasSameNonEmptyValue(
+        aggregateEntry.location.postcode,
+        numberedEntry.location.postcode,
+      ) &&
+      this.hasShadowAggregateContactOverlap(aggregateEntry, numberedEntry) &&
+      this.hasCompatibleAddress(
+        aggregateEntry.location.address,
+        numberedEntry.location.address,
+      )
+    );
+  }
+
+  private hasShadowAggregateContactOverlap(
+    left: IHotelRegistryEntry,
+    right: IHotelRegistryEntry,
+  ): boolean {
+    return (
+      this.hasArrayOverlap(left.contacts.phones, right.contacts.phones) ||
+      this.hasNonSharedDomainOverlap(
+        left.contacts.domains,
+        right.contacts.domains,
+      )
+    );
+  }
+
+  private hasCloseAggregateCapacity(
+    aggregateEntry: IHotelRegistryEntry,
+    numberedEntries: IHotelRegistryEntry[],
+  ): boolean {
+    const rooms = aggregateEntry.capacity.rooms;
+    const beds = aggregateEntry.capacity.beds;
+
+    if (rooms === null || beds === null) {
+      return false;
+    }
+
+    const numberedRooms = numberedEntries.map(({ capacity }) => capacity.rooms);
+    const numberedBeds = numberedEntries.map(({ capacity }) => capacity.beds);
+
+    if (
+      numberedRooms.some((value) => value === null) ||
+      numberedBeds.some((value) => value === null)
+    ) {
+      return false;
+    }
+
+    const completeNumberedRooms = numberedRooms.filter(
+      (value): value is number => value !== null,
+    );
+    const completeNumberedBeds = numberedBeds.filter(
+      (value): value is number => value !== null,
+    );
+    const maxNumberedRooms = Math.max(...completeNumberedRooms);
+    const maxNumberedBeds = Math.max(...completeNumberedBeds);
+    const roomsSum = completeNumberedRooms.reduce(
+      (sum, value) => sum + value,
+      0,
+    );
+    const bedsSum = completeNumberedBeds.reduce(
+      (sum, value) => sum + value,
+      0,
+    );
+
+    return (
+      rooms > maxNumberedRooms &&
+      beds > maxNumberedBeds &&
+      this.isWithinAggregateTolerance(rooms, roomsSum) &&
+      this.isWithinAggregateTolerance(beds, bedsSum)
+    );
+  }
+
+  private isWithinAggregateTolerance(
+    aggregateValue: number,
+    sumValue: number,
+  ): boolean {
+    if (sumValue === 0) {
+      return false;
+    }
+
+    return Math.abs(sumValue - aggregateValue) / sumValue <= 0.2;
   }
 
   private isEmptyContacts(contacts: IHotelContacts): boolean {
@@ -1216,6 +1409,10 @@ export class HotelRegistryEntriesService {
     const suffixNumber = this.readNumericSuffixNumber(entry.name.suffix);
 
     return suffixNumber !== null && suffixNumber <= 100;
+  }
+
+  private hasPureNumericSuffix(entry: IHotelRegistryEntry): boolean {
+    return entry.name.suffix !== null && /^\d+$/.test(entry.name.suffix);
   }
 
   private buildRegistryEntryFields(

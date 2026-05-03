@@ -124,6 +124,54 @@ export class HotelProcessingBatchProcessor {
       }
 
       try {
+        const shadowAggregateGroup =
+          await this.hotelRegistryEntriesService.readShadowAggregateNumericSuffixGroup(
+            registryEntry,
+          );
+
+        if (shadowAggregateGroup !== null) {
+          const candidate =
+            await this.canonicalHotelCandidatesService.upsertFromRegistryEntries(
+              shadowAggregateGroup.numberedEntries,
+            );
+
+          for (const groupEntry of shadowAggregateGroup.numberedEntries) {
+            const groupEntryId = groupEntry._id.toString();
+
+            if (!processedRegistryEntryIds.has(groupEntryId)) {
+              await this.hotelRegistryEntriesService.markProcessed(
+                groupEntry._id,
+                candidate._id,
+                data.runId,
+              );
+              processedRegistryEntryIds.add(groupEntryId);
+
+              if (
+                groupEntry.processing.status !==
+                HOTEL_PROCESSING_STATUS.PROCESSED
+              ) {
+                processed += 1;
+              }
+            }
+          }
+
+          for (const shadowAggregateEntry of shadowAggregateGroup.shadowAggregateEntries) {
+            const shadowAggregateEntryId =
+              shadowAggregateEntry._id.toString();
+
+            if (!processedRegistryEntryIds.has(shadowAggregateEntryId)) {
+              await this.hotelRegistryEntriesService.markShadowAggregateIgnored(
+                shadowAggregateEntry._id,
+                this.buildShadowAggregateMessage(shadowAggregateEntry),
+              );
+              processedRegistryEntryIds.add(shadowAggregateEntryId);
+              ignored += 1;
+            }
+          }
+
+          continue;
+        }
+
         const groupEntries =
           await this.hotelRegistryEntriesService.readSafeCanonicalCandidateGroup(
             registryEntry,
@@ -223,5 +271,26 @@ export class HotelProcessingBatchProcessor {
     }
 
     return `Registry entry is blocked: ${issues.join(', ')}`;
+  }
+
+  private buildShadowAggregateMessage(registryEntry: {
+    location: {
+      address: string | null;
+      postcode: string | null;
+    };
+    name: {
+      baseName: string;
+    };
+  }): string {
+    return [
+      'Ignored as shadow aggregate of numeric suffix group:',
+      registryEntry.name.baseName,
+      'postcode',
+      registryEntry.location.postcode ?? '',
+      'address',
+      registryEntry.location.address ?? '',
+    ]
+      .join(' ')
+      .trim();
   }
 }

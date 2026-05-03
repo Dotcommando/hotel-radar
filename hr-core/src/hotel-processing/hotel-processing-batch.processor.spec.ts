@@ -38,8 +38,19 @@ interface IHotelRegistryEntriesServiceMock {
     Promise<void>,
     [Types.ObjectId, Types.ObjectId, string]
   >;
+  markShadowAggregateIgnored: jest.Mock<
+    Promise<void>,
+    [Types.ObjectId, string]
+  >;
   hasCompatibleNumericSuffixGroup: jest.Mock<
     Promise<boolean>,
+    [IHotelRegistryEntry]
+  >;
+  readShadowAggregateNumericSuffixGroup: jest.Mock<
+    Promise<{
+      numberedEntries: IHotelRegistryEntry[];
+      shadowAggregateEntries: IHotelRegistryEntry[];
+    } | null>,
     [IHotelRegistryEntry]
   >;
   readSafeCanonicalCandidateGroup: jest.Mock<
@@ -191,7 +202,9 @@ describe('HotelProcessingBatchProcessor registry-to-candidates', () => {
       markFailed: jest.fn(),
       markIgnored: jest.fn(),
       markProcessed: jest.fn(),
+      markShadowAggregateIgnored: jest.fn(),
       hasCompatibleNumericSuffixGroup: jest.fn(),
+      readShadowAggregateNumericSuffixGroup: jest.fn(),
       readSafeCanonicalCandidateGroup: jest.fn(),
     };
     hotelProcessingRunsService = {
@@ -209,6 +222,9 @@ describe('HotelProcessingBatchProcessor registry-to-candidates', () => {
       upsertAmbiguousBaseCandidate: jest.fn(),
       upsertFromRegistryEntries: jest.fn(),
     };
+    hotelRegistryEntriesService.readShadowAggregateNumericSuffixGroup.mockResolvedValue(
+      null,
+    );
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         HotelProcessingBatchProcessor,
@@ -593,6 +609,110 @@ describe('HotelProcessingBatchProcessor registry-to-candidates', () => {
       numericEntryTwo._id,
       groupCandidateId,
       'run-1',
+    );
+    expect(
+      canonicalHotelCandidatesService.upsertAmbiguousBaseCandidate,
+    ).not.toHaveBeenCalled();
+  });
+
+  it('ignores THALASSINES shadow aggregate and creates only the numbered group candidate', async () => {
+    const aggregateEntry = buildRegistryEntry({
+      capacity: {
+        beds: 64,
+        rooms: 11,
+      },
+      contacts: {
+        domains: ['thalassines.com'],
+        emails: ['reservations@thalassines.com'],
+        phones: ['+35723744866'],
+        websites: ['https://www.thalassines.com/'],
+      },
+      location: {
+        address: '77, Agias Theklas Avenue',
+        district: 'AGIA NAPA',
+        locality: 'Agia Napa',
+        postcode: '5391',
+      },
+      name: {
+        baseName: 'THALASSINES',
+        normalized: 'THALASSINES',
+        original: 'THALASSINES',
+        suffix: null,
+      },
+      registryKey: 'thalassines-aggregate',
+    });
+    const numberedEntries = ['2', '7', '8'].map((suffix) =>
+      buildRegistryEntry({
+        capacity: {
+          beds: 6,
+          rooms: 1,
+        },
+        contacts: {
+          domains: ['thalassines.com'],
+          emails: ['admin@thalassines.com'],
+          phones: ['+35723744866'],
+          websites: ['https://www.thalassines.com/'],
+        },
+        location: {
+          address: '77 Agias Theklas Avenue',
+          district: 'SOTERA',
+          locality: 'Sotera',
+          postcode: '5391',
+        },
+        name: {
+          baseName: 'THALASSINES',
+          normalized: `THALASSINES ${suffix}`,
+          original: `THALASSINES ${suffix}`,
+          suffix,
+        },
+        registryKey: `thalassines-${suffix}`,
+      }),
+    );
+    const candidateId = new Types.ObjectId();
+
+    hotelRegistryEntriesService.claimPendingForRun.mockResolvedValue([
+      aggregateEntry,
+    ]);
+    hotelRegistryEntriesService.readShadowAggregateNumericSuffixGroup.mockResolvedValue(
+      {
+        numberedEntries,
+        shadowAggregateEntries: [aggregateEntry],
+      },
+    );
+    canonicalHotelCandidatesService.upsertFromRegistryEntries.mockResolvedValue(
+      buildCandidate(candidateId),
+    );
+    hotelRegistryEntriesService.countByProcessingStatus.mockResolvedValue(0);
+
+    await processor.processRegistryToCandidatesBatch({
+      batchNo: 1,
+      batchSize: 50,
+      runId: 'run-1',
+      stage: HOTEL_PROCESSING_STAGE.REGISTRY_TO_CANDIDATES,
+    });
+
+    expect(
+      canonicalHotelCandidatesService.upsertFromRegistryEntries,
+    ).toHaveBeenCalledWith(numberedEntries);
+    expect(hotelRegistryEntriesService.markProcessed).toHaveBeenCalledTimes(3);
+
+    for (const numberedEntry of numberedEntries) {
+      expect(hotelRegistryEntriesService.markProcessed).toHaveBeenCalledWith(
+        numberedEntry._id,
+        candidateId,
+        'run-1',
+      );
+    }
+
+    expect(
+      hotelRegistryEntriesService.markShadowAggregateIgnored,
+    ).toHaveBeenCalledWith(
+      aggregateEntry._id,
+      'Ignored as shadow aggregate of numeric suffix group: THALASSINES postcode 5391 address 77, Agias Theklas Avenue',
+    );
+    expect(hotelProcessingRunsService.incrementIgnored).toHaveBeenCalledWith(
+      'run-1',
+      1,
     );
     expect(
       canonicalHotelCandidatesService.upsertAmbiguousBaseCandidate,
