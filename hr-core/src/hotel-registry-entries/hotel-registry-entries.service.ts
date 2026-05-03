@@ -357,26 +357,8 @@ export class HotelRegistryEntriesService {
       return false;
     }
 
-    const sibling = await this.hotelRegistryEntryModel
-      .exists({
-        $or: [
-          {
-            'contacts.domains': {
-              $in: entry.contacts.domains,
-            },
-          },
-          {
-            'contacts.emails': {
-              $in: entry.contacts.emails,
-            },
-          },
-          {
-            'contacts.phones': {
-              $in: entry.contacts.phones,
-            },
-          },
-        ],
-        'location.postcode': entry.location.postcode,
+    const candidates = await this.hotelRegistryEntryModel
+      .find({
         'name.baseName': entry.name.baseName,
         'name.suffix': {
           $regex: '^\\d+[A-Z]?$',
@@ -390,9 +372,14 @@ export class HotelRegistryEntriesService {
         },
         status: HOTEL_REGISTRY_ENTRY_STATUS.READY,
       })
+      .sort({
+        _id: 1,
+      })
       .exec();
 
-    return sibling !== null;
+    return candidates.some((candidate) =>
+      this.isSafeNumericSuffixArtifactPair(entry, candidate),
+    );
   }
 
   async markProcessed(

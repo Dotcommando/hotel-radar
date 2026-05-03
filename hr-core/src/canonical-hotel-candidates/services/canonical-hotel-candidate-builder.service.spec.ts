@@ -249,6 +249,12 @@ describe('CanonicalHotelCandidateBuilderService', () => {
   it('builds numeric suffix groups deterministically with natural component ordering', () => {
     const entries = [
       buildRegistryEntry({
+        location: {
+          address: '77 Agias Theklas Avenue',
+          district: 'SOTERA',
+          locality: 'Sotera',
+          postcode: '5391',
+        },
         name: {
           baseName: 'THALASSINES',
           normalized: 'THALASSINES 10',
@@ -273,6 +279,12 @@ describe('CanonicalHotelCandidateBuilderService', () => {
         registryKey: 'thalassines-2',
       }),
       buildRegistryEntry({
+        location: {
+          address: '77 Agias Theklas Avenue',
+          district: 'SOTERA',
+          locality: 'Sotera',
+          postcode: '5391',
+        },
         name: {
           baseName: 'THALASSINES',
           normalized: 'THALASSINES 7',
@@ -295,7 +307,7 @@ describe('CanonicalHotelCandidateBuilderService', () => {
       'THALASSINES 7',
       'THALASSINES 10',
     ]);
-    expect(forwardResult.location.address).toBe('77 Agias Theklas');
+    expect(forwardResult.location.address).toBe('77 Agias Theklas Avenue');
   });
 
   it('does not include standalone base entries in numeric suffix groups', () => {
@@ -332,6 +344,141 @@ describe('CanonicalHotelCandidateBuilderService', () => {
 
     expect(result.kind).toBe(CANONICAL_HOTEL_KIND.SINGLE_PROPERTY);
     expect(result.candidateKey).toBe('ccv1|single|thalassines-10');
+  });
+
+  it('keeps standalone THALASSINES separate from its numeric suffix group', () => {
+    const baseEntry = buildRegistryEntry({
+      capacity: {
+        beds: 64,
+        rooms: 11,
+      },
+      contacts: {
+        domains: ['thalassines.com'],
+        emails: ['reservations@thalassines.com'],
+        phones: ['+35723744866'],
+        websites: ['https://www.thalassines.com/'],
+      },
+      establishmentType: 'TOURIST VILLAS',
+      location: {
+        address: '77, Agias Theklas Avenue',
+        district: 'AGIA NAPA',
+        locality: 'Agia Napa',
+        postcode: '5391',
+      },
+      name: {
+        baseName: 'THALASSINES',
+        normalized: 'THALASSINES',
+        original: 'THALASSINES',
+        suffix: null,
+      },
+      operator: 'Mr Andreas Limbourides',
+      registryKey: 'thalassines-base',
+    });
+    const numericEntries = [
+      '2',
+      '7',
+      '8',
+      '9',
+      '10',
+      '11',
+      '12',
+      '13',
+      '14',
+      '15',
+      '16',
+      '17',
+    ].map((suffix) =>
+      buildRegistryEntry({
+        capacity: {
+          beds: 6,
+          rooms: 1,
+        },
+        contacts: {
+          domains: ['thalassines.com'],
+          emails: ['admin@thalassines.com'],
+          phones: ['+35723744866'],
+          websites: ['https://www.thalassines.com/'],
+        },
+        establishmentType: 'TOURIST VILLAS',
+        location: {
+          address:
+            suffix === '2' ? '77 Agias Theklas' : '77 Agias Theklas Avenue',
+          district: 'SOTERA',
+          locality: 'Sotera',
+          postcode: '5391',
+        },
+        name: {
+          baseName: 'THALASSINES',
+          normalized: `THALASSINES ${suffix}`,
+          original: `THALASSINES ${suffix}`,
+          suffix,
+        },
+        operator: 'Limbus Creations Ltd',
+        registryKey: `thalassines-${suffix}`,
+      }),
+    );
+
+    const singleCandidate = service.buildFromRegistryEntries([baseEntry]);
+    const groupCandidate = service.buildFromRegistryEntries(numericEntries);
+
+    expect(singleCandidate.status).toBe(
+      CANONICAL_HOTEL_CANDIDATE_STATUS.READY,
+    );
+    expect(singleCandidate.kind).toBe(CANONICAL_HOTEL_KIND.SINGLE_PROPERTY);
+    expect(singleCandidate.build).toEqual({
+      issues: [],
+      rule: 'single_registry_entry',
+      ruleVersion: 1,
+    });
+    expect(singleCandidate.capacity).toEqual({
+      beds: 64,
+      mode: CANONICAL_HOTEL_CAPACITY_MODE.SINGLE_COMPONENT,
+      rooms: 11,
+    });
+    expect(singleCandidate.location.locality).toBe('Agia Napa');
+    expect(singleCandidate.operator).toBe('Mr Andreas Limbourides');
+    expect(singleCandidate.contacts.emails).toEqual([
+      'reservations@thalassines.com',
+    ]);
+
+    expect(groupCandidate.status).toBe(
+      CANONICAL_HOTEL_CANDIDATE_STATUS.READY,
+    );
+    expect(groupCandidate.kind).toBe(CANONICAL_HOTEL_KIND.PROPERTY_COMPLEX);
+    expect(groupCandidate.build.rule).toBe('numeric_suffix_group');
+    expect(groupCandidate.capacity).toEqual({
+      beds: 72,
+      mode: CANONICAL_HOTEL_CAPACITY_MODE.SUM_COMPONENTS,
+      rooms: 12,
+    });
+    expect(groupCandidate.location).toEqual({
+      address: '77 Agias Theklas Avenue',
+      district: 'SOTERA',
+      locality: 'Sotera',
+      postcode: '5391',
+    });
+    expect(groupCandidate.operator).toBe('Limbus Creations Ltd');
+    expect(groupCandidate.contacts.emails).toEqual(['admin@thalassines.com']);
+    expect(groupCandidate.components).toHaveLength(12);
+    expect(groupCandidate.components.map(({ name }) => name)).toEqual([
+      'THALASSINES 2',
+      'THALASSINES 7',
+      'THALASSINES 8',
+      'THALASSINES 9',
+      'THALASSINES 10',
+      'THALASSINES 11',
+      'THALASSINES 12',
+      'THALASSINES 13',
+      'THALASSINES 14',
+      'THALASSINES 15',
+      'THALASSINES 16',
+      'THALASSINES 17',
+    ]);
+    expect(
+      groupCandidate.components.every(
+        (component) => component.rooms === 1 && component.beds === 6,
+      ),
+    ).toBe(true);
   });
 
   it('groups PALATAKIA numeric suffix entries when Stage 1 preserves suffixes', () => {

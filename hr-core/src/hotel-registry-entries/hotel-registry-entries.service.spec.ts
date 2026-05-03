@@ -695,6 +695,69 @@ describe('HotelRegistryEntriesService', () => {
     ]);
   });
 
+  it('does not mark standalone THALASSINES as ambiguous when numeric suffix group has different operator and locality', async () => {
+    const baseEntry = buildRegistryEntry({
+      capacity: {
+        beds: 64,
+        rooms: 11,
+      },
+      contacts: {
+        domains: ['thalassines.com'],
+        emails: ['reservations@thalassines.com'],
+        phones: ['+35723744866'],
+        websites: ['https://www.thalassines.com/'],
+      },
+      establishmentType: 'TOURIST VILLAS',
+      location: {
+        address: '77, Agias Theklas Avenue',
+        district: 'AGIA NAPA',
+        locality: 'Agia Napa',
+        postcode: '5391',
+      },
+      name: {
+        baseName: 'THALASSINES',
+        normalized: 'THALASSINES',
+        original: 'THALASSINES',
+        suffix: null,
+      },
+      operator: 'Mr Andreas Limbourides',
+      registryKey: 'thalassines-base',
+    });
+    const numericEntry = buildRegistryEntry({
+      capacity: {
+        beds: 6,
+        rooms: 1,
+      },
+      contacts: {
+        domains: ['thalassines.com'],
+        emails: ['admin@thalassines.com'],
+        phones: ['+35723744866'],
+        websites: ['https://www.thalassines.com/'],
+      },
+      establishmentType: 'TOURIST VILLAS',
+      location: {
+        address: '77 Agias Theklas Avenue',
+        district: 'SOTERA',
+        locality: 'Sotera',
+        postcode: '5391',
+      },
+      name: {
+        baseName: 'THALASSINES',
+        normalized: 'THALASSINES 10',
+        original: 'THALASSINES 10',
+        suffix: '10',
+      },
+      operator: 'Limbus Creations Ltd',
+      registryKey: 'thalassines-10',
+    });
+
+    mockFindResult([numericEntry]);
+
+    const result = await service.hasCompatibleNumericSuffixGroup(baseEntry);
+
+    expect(result).toBe(false);
+  });
+
   it('finds same-type strong identity groups with district-resolvable locality conflicts', async () => {
     const troodosEntry = buildRegistryEntry({
       capacity: {

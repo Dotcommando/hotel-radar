@@ -125,6 +125,7 @@ export class CanonicalHotelCandidateBuilderService {
   ): ICreateCanonicalHotelCandidate {
     const sortedEntries = this.sortByName(entries);
     const firstEntry = sortedEntries[0];
+    const bestLocationEntry = this.findBestLocationEntry(sortedEntries);
 
     return {
       build: {
@@ -151,7 +152,7 @@ export class CanonicalHotelCandidateBuilderService {
       })),
       contacts: firstEntry.contacts,
       kind: CANONICAL_HOTEL_KIND.PROPERTY_COMPLEX,
-      location: firstEntry.location,
+      location: this.mergeLocation(bestLocationEntry, sortedEntries),
       operator: firstEntry.operator,
       processing: {
         canonicalHotelId: null,
