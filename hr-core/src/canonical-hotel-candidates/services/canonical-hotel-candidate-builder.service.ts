@@ -37,6 +37,10 @@ export class CanonicalHotelCandidateBuilderService {
       return this.buildSameNameMultiTypeCandidate(entries);
     }
 
+    if (this.isSafeSameNameSameTypeStrongIdentityCollapseGroup(entries)) {
+      return this.buildSameNameSameTypeStrongIdentityCollapsedCandidate(entries);
+    }
+
     if (this.isSafeSameNameSameTypeCollapseGroup(entries)) {
       return this.buildSameNameSameTypeCollapsedCandidate(entries);
     }
@@ -251,6 +255,53 @@ export class CanonicalHotelCandidateBuilderService {
     };
   }
 
+  private buildSameNameSameTypeStrongIdentityCollapsedCandidate(
+    entries: IHotelRegistryEntry[],
+  ): ICreateCanonicalHotelCandidate {
+    const sortedEntries = this.sortByNameAndType(entries);
+    const bestEntry = this.findBestLocationEntry(sortedEntries);
+
+    return {
+      build: {
+        issues: [],
+        rule: 'same_name_same_type_strong_identity_prefer_best_location',
+        ruleVersion: 1,
+      },
+      candidateKey: this.buildSameNameGroupCandidateKey(
+        'same_name_same_type_strong_identity_prefer_best_location',
+        bestEntry,
+        sortedEntries,
+      ),
+      canonicalName: bestEntry.name.original,
+      capacity: {
+        beds: bestEntry.capacity.beds,
+        mode: CANONICAL_HOTEL_CAPACITY_MODE.SINGLE_COMPONENT,
+        rooms: bestEntry.capacity.rooms,
+      },
+      components: [
+        {
+          beds: bestEntry.capacity.beds,
+          establishmentType: bestEntry.establishmentType,
+          name: bestEntry.name.original,
+          rooms: bestEntry.capacity.rooms,
+        },
+      ],
+      contacts: this.mergeContacts(sortedEntries),
+      kind: CANONICAL_HOTEL_KIND.SINGLE_PROPERTY,
+      location: this.mergeLocation(bestEntry, sortedEntries),
+      operator: this.findBestOperator(bestEntry, sortedEntries),
+      processing: {
+        canonicalHotelId: null,
+        claimedAt: null,
+        error: null,
+        processedAt: null,
+        runId: null,
+        status: HOTEL_PROCESSING_STATUS.PENDING,
+      },
+      status: CANONICAL_HOTEL_CANDIDATE_STATUS.READY,
+    };
+  }
+
   private isSafeNumericSuffixGroup(entries: IHotelRegistryEntry[]): boolean {
     if (entries.length < 2) {
       return false;
@@ -364,6 +415,26 @@ export class CanonicalHotelCandidateBuilderService {
     );
   }
 
+  private isSafeSameNameSameTypeStrongIdentityCollapseGroup(
+    entries: IHotelRegistryEntry[],
+  ): boolean {
+    if (entries.length < 2 || !this.hasOneNormalizedName(entries)) {
+      return false;
+    }
+
+    const establishmentTypes = new Set(
+      entries.map(({ establishmentType }) => establishmentType),
+    );
+
+    return (
+      establishmentTypes.size === 1 &&
+      this.allEntriesHaveMeaningfulContactOverlap(entries) &&
+      this.allEntriesHaveStrongIdentityDuplicateLocation(entries) &&
+      this.allEntriesHaveCompatibleOperator(entries) &&
+      this.hasExactCapacityForCollapse(entries)
+    );
+  }
+
   private hasOneNormalizedName(entries: IHotelRegistryEntry[]): boolean {
     const firstName = entries[0].name.normalized;
 
@@ -437,6 +508,81 @@ export class CanonicalHotelCandidateBuilderService {
     );
   }
 
+  private allEntriesHaveStrongIdentityDuplicateLocation(
+    entries: IHotelRegistryEntry[],
+  ): boolean {
+    return this.allEntryPairsMatch(entries, (left, right) =>
+      this.hasStrongIdentityDuplicateLocation(left, right),
+    );
+  }
+
+  private hasStrongIdentityDuplicateLocation(
+    left: IHotelRegistryEntry,
+    right: IHotelRegistryEntry,
+  ): boolean {
+    if (
+      this.hasConflictingValue(
+        left.location.postcode,
+        right.location.postcode,
+      ) ||
+      this.hasConflictingValue(
+        left.location.district,
+        right.location.district,
+      )
+    ) {
+      return false;
+    }
+
+    if (left.location.address !== null && right.location.address !== null) {
+      return this.hasCompatibleAddress(
+        left.location.address,
+        right.location.address,
+      );
+    }
+
+    return this.resolveLocalityFromDistrict(left, right) !== null;
+  }
+
+  private resolveLocalityFromDistrict(
+    left: IHotelRegistryEntry,
+    right: IHotelRegistryEntry,
+  ): string | null {
+    if (left.location.locality === null) {
+      return right.location.locality;
+    }
+
+    if (
+      right.location.locality === null ||
+      this.hasCompatibleLocationText(
+        left.location.locality,
+        right.location.locality,
+      )
+    ) {
+      return left.location.locality;
+    }
+
+    const district = left.location.district ?? right.location.district ?? null;
+    const normalizedDistrict = this.normalizeText(district);
+    const normalizedLeftLocality = this.normalizeText(left.location.locality);
+    const normalizedRightLocality = this.normalizeText(right.location.locality);
+    const districtMatchesLeft =
+      normalizedLeftLocality.length > 0 &&
+      normalizedDistrict.includes(normalizedLeftLocality);
+    const districtMatchesRight =
+      normalizedRightLocality.length > 0 &&
+      normalizedDistrict.includes(normalizedRightLocality);
+
+    if (districtMatchesLeft && !districtMatchesRight) {
+      return left.location.locality;
+    }
+
+    if (districtMatchesRight && !districtMatchesLeft) {
+      return right.location.locality;
+    }
+
+    return null;
+  }
+
   private hasCompatibleCapacityForCollapse(
     entries: IHotelRegistryEntry[],
   ): boolean {
@@ -461,6 +607,16 @@ export class CanonicalHotelCandidateBuilderService {
 
       return true;
     });
+  }
+
+  private hasExactCapacityForCollapse(entries: IHotelRegistryEntry[]): boolean {
+    const firstEntry = entries[0];
+
+    return entries.every(
+      ({ capacity }) =>
+        capacity.rooms === firstEntry.capacity.rooms &&
+        capacity.beds === firstEntry.capacity.beds,
+    );
   }
 
   private hasConflictingCapacity(entries: IHotelRegistryEntry[]): boolean {
@@ -558,6 +714,16 @@ export class CanonicalHotelCandidateBuilderService {
 
   private getLocationScore(location: IHotelLocation): number {
     let score = 0;
+
+    if (
+      location.district !== null &&
+      location.locality !== null &&
+      this.normalizeText(location.district).includes(
+        this.normalizeText(location.locality),
+      )
+    ) {
+      score += 10000;
+    }
 
     if (location.postcode !== null) {
       score += 1000;

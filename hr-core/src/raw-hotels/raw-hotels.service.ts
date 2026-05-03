@@ -6,6 +6,7 @@ import { RAW_HOTEL_MODEL_NAME } from './constants/raw-hotel-model-name.constant'
 import { ICreateRawHotel } from './types/create-raw-hotel.interface';
 import { IPersistedRawHotel } from './types/persisted-raw-hotel.interface';
 import { IRawHotel } from './types/raw-hotel.interface';
+import { IRawHotelContacts } from './types/raw-hotel-contacts.interface';
 import {
   makeAddressMergeHotelDedupeKey,
   makeNameMatchKey,
@@ -20,6 +21,17 @@ interface IPersistedRawHotelFields extends ICreateRawHotel {
   nameNormalized: string;
   strictHotelDedupeKey: string;
 }
+
+const SHARED_CHAIN_CONTACT_DOMAINS = new Set([
+  'atlanticahotels.com',
+  'kanikahotels.com',
+  'leonardo-hotels-cyprus.com',
+  'leonardo-hotels.com',
+  'leonardo-hotels.co',
+  'louis-hotels.com',
+  'louishotels.com',
+  'tsokkos.com',
+]);
 
 @Injectable()
 export class RawHotelsService {
@@ -65,6 +77,17 @@ export class RawHotelsService {
 
         await this.updateExistingRawHotel(
           addressMergeCandidate._id,
+          persistedRawHotel,
+        );
+        continue;
+      }
+
+      const strongDuplicateCandidate =
+        await this.readStrongDuplicateCandidate(persistedRawHotel);
+
+      if (strongDuplicateCandidate !== null) {
+        await this.updateExistingStrongDuplicateRawHotel(
+          strongDuplicateCandidate,
           persistedRawHotel,
         );
         continue;
@@ -119,6 +142,50 @@ export class RawHotelsService {
   ): Promise<IPersistedRawHotel | null> {
     return this.rawHotelModel
       .findOne(this.buildComplementaryAddressMergeFilter(rawHotel))
+      .sort({
+        _id: 1,
+      })
+      .exec();
+  }
+
+  private async readStrongDuplicateCandidate(
+    rawHotel: IPersistedRawHotelFields,
+  ): Promise<IPersistedRawHotel | null> {
+    const contactFilters = this.buildMeaningfulContactOverlapFilters(
+      rawHotel.contacts,
+    );
+
+    if (
+      contactFilters.length === 0 ||
+      rawHotel.rooms === null ||
+      rawHotel.beds === null ||
+      rawHotel.postcode === null ||
+      rawHotel.operatorName === null
+    ) {
+      return null;
+    }
+
+    return this.rawHotelModel
+      .findOne({
+        $and: [
+          {
+            'sourceFile.filename': rawHotel.sourceFile.filename,
+          },
+          {
+            beds: rawHotel.beds,
+            establishmentType: rawHotel.establishmentType,
+            nameNormalized: rawHotel.nameNormalized,
+            operatorName: rawHotel.operatorName,
+            postcode: rawHotel.postcode,
+            region: rawHotel.region,
+            rooms: rawHotel.rooms,
+          },
+          this.buildCompatibleAddressFilter(rawHotel.address),
+          {
+            $or: contactFilters,
+          },
+        ],
+      })
       .sort({
         _id: 1,
       })
@@ -239,6 +306,66 @@ export class RawHotelsService {
       .exec();
   }
 
+  private async updateExistingStrongDuplicateRawHotel(
+    existingRawHotel: IPersistedRawHotel,
+    persistedRawHotel: IPersistedRawHotelFields,
+  ): Promise<void> {
+    const mergedRawHotel = this.buildMergedStrongDuplicateRawHotel(
+      existingRawHotel,
+      persistedRawHotel,
+    );
+
+    await this.updateExistingRawHotel(existingRawHotel._id, mergedRawHotel);
+  }
+
+  private buildMergedStrongDuplicateRawHotel(
+    existingRawHotel: IPersistedRawHotel,
+    persistedRawHotel: IPersistedRawHotelFields,
+  ): IPersistedRawHotelFields {
+    const selectedLocality = this.selectResolvedLocality({
+      existingLocality: existingRawHotel.locality,
+      incomingLocality: persistedRawHotel.locality,
+      region: persistedRawHotel.region ?? existingRawHotel.region,
+    });
+    const preferredRawHotel =
+      selectedLocality === persistedRawHotel.locality &&
+      selectedLocality !== existingRawHotel.locality
+        ? persistedRawHotel
+        : existingRawHotel;
+    const secondaryRawHotel =
+      preferredRawHotel === persistedRawHotel
+        ? existingRawHotel
+        : persistedRawHotel;
+
+    return this.buildPersistedRawHotel({
+      address:
+        preferredRawHotel.address ??
+        secondaryRawHotel.address ??
+        persistedRawHotel.address,
+      beds: persistedRawHotel.beds,
+      classRaw: persistedRawHotel.classRaw ?? existingRawHotel.classRaw,
+      contacts: this.mergeRawContacts(
+        preferredRawHotel.contacts,
+        secondaryRawHotel.contacts,
+      ),
+      createdAt: persistedRawHotel.createdAt,
+      establishmentType: persistedRawHotel.establishmentType,
+      licenseStatus: persistedRawHotel.licenseStatus,
+      locality: selectedLocality,
+      managerName:
+        persistedRawHotel.managerName ?? existingRawHotel.managerName,
+      name: persistedRawHotel.name,
+      nameNormalized: persistedRawHotel.nameNormalized,
+      operatorName: persistedRawHotel.operatorName,
+      postcode: persistedRawHotel.postcode,
+      region: persistedRawHotel.region,
+      rooms: persistedRawHotel.rooms,
+      sourceFile: persistedRawHotel.sourceFile,
+      stars: persistedRawHotel.stars,
+      updatedAt: persistedRawHotel.updatedAt,
+    });
+  }
+
   private async deleteObsoleteReversedCapacityDuplicates(
     persistedRawHotel: IPersistedRawHotelFields,
   ): Promise<void> {
@@ -333,6 +460,151 @@ export class RawHotelsService {
 
   private hasAddress(address: string | null): boolean {
     return address !== null && address.trim().length > 0;
+  }
+
+  private buildMeaningfulContactOverlapFilters(
+    contacts: IRawHotelContacts,
+  ): Array<Record<string, unknown>> {
+    const filters: Array<Record<string, unknown>> = [];
+
+    if (contacts.emails.length > 0) {
+      filters.push({
+        'contacts.emails': {
+          $in: contacts.emails,
+        },
+      });
+    }
+
+    if (
+      contacts.domain !== null &&
+      !SHARED_CHAIN_CONTACT_DOMAINS.has(this.normalizeContactDomain(contacts.domain))
+    ) {
+      filters.push({
+        'contacts.domain': contacts.domain,
+      });
+    }
+
+    if (contacts.websites.length > 0) {
+      filters.push({
+        'contacts.websites': {
+          $in: contacts.websites,
+        },
+      });
+    }
+
+    return filters;
+  }
+
+  private buildCompatibleAddressFilter(
+    address: string | null,
+  ): Record<string, unknown> {
+    if (!this.hasAddress(address)) {
+      return {};
+    }
+
+    return {
+      $or: [
+        {
+          address,
+        },
+        {
+          address: null,
+        },
+        {
+          address: '',
+        },
+        {
+          address: {
+            $exists: false,
+          },
+        },
+      ],
+    };
+  }
+
+  private selectResolvedLocality(params: {
+    existingLocality: string | null;
+    incomingLocality: string | null;
+    region: string | null;
+  }): string | null {
+    const region = this.normalizeText(params.region);
+    const existingLocality = this.normalizeText(params.existingLocality);
+    const incomingLocality = this.normalizeText(params.incomingLocality);
+
+    if (params.existingLocality === null) {
+      return params.incomingLocality;
+    }
+
+    if (params.incomingLocality === null || existingLocality === incomingLocality) {
+      return params.existingLocality;
+    }
+
+    const regionMatchesExisting =
+      existingLocality.length > 0 && region.includes(existingLocality);
+    const regionMatchesIncoming =
+      incomingLocality.length > 0 && region.includes(incomingLocality);
+
+    if (regionMatchesExisting && !regionMatchesIncoming) {
+      return params.existingLocality;
+    }
+
+    if (regionMatchesIncoming && !regionMatchesExisting) {
+      return params.incomingLocality;
+    }
+
+    return params.existingLocality;
+  }
+
+  private mergeRawContacts(
+    preferredContacts: IRawHotelContacts,
+    secondaryContacts: IRawHotelContacts,
+  ): IRawHotelContacts {
+    return {
+      domain: preferredContacts.domain ?? secondaryContacts.domain,
+      emails: this.mergeStringsPreservingPreferredOrder(
+        preferredContacts.emails,
+        secondaryContacts.emails,
+      ),
+      faxes: this.mergeStringsPreservingPreferredOrder(
+        preferredContacts.faxes,
+        secondaryContacts.faxes,
+      ),
+      phones: this.mergeStringsPreservingPreferredOrder(
+        preferredContacts.phones,
+        secondaryContacts.phones,
+      ),
+      websites: this.mergeStringsPreservingPreferredOrder(
+        preferredContacts.websites,
+        secondaryContacts.websites,
+      ),
+    };
+  }
+
+  private mergeStringsPreservingPreferredOrder(
+    preferredValues: string[],
+    secondaryValues: string[],
+  ): string[] {
+    return [...new Set([...preferredValues, ...secondaryValues])];
+  }
+
+  private normalizeContactDomain(value: string): string {
+    return value
+      .trim()
+      .toLowerCase()
+      .replace(/^www\./u, '');
+  }
+
+  private normalizeText(value: string | null): string {
+    return (
+      value
+        ?.normalize('NFKC')
+        .replace(/[.,;:()[\]{}]/g, ' ')
+        .replace(/[/\\]/g, ' ')
+        .replace(/[-–—]/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim()
+        .toUpperCase() ?? ''
+    );
   }
 
   async readManyBySourceFileNames(

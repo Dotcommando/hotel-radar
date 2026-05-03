@@ -172,6 +172,21 @@ describe('RawHotelsService', () => {
     rawHotelModel.findOne.mockReturnValue({ sort });
   }
 
+  function mockFindOneResults(
+    rawHotels: Array<IPersistedRawHotel | null>,
+  ): void {
+    for (const rawHotel of rawHotels) {
+      const exec = jest
+        .fn<Promise<IPersistedRawHotel | null>, []>()
+        .mockResolvedValue(rawHotel);
+      const sort = jest
+        .fn<IExecable<IPersistedRawHotel | null>, [Record<string, 1 | -1>]>()
+        .mockReturnValue({ exec });
+
+      rawHotelModel.findOne.mockReturnValueOnce({ sort });
+    }
+  }
+
   function mockUpdateOneResult(result: IUpdateOneResult = {}): void {
     const exec = jest
       .fn<Promise<IUpdateOneResult>, []>()
@@ -518,6 +533,97 @@ describe('RawHotelsService', () => {
 
     expect(updateFields).not.toHaveProperty('address');
     expect(result).toBe(1);
+  });
+
+  it('merges a strong raw duplicate and resolves conflicting locality from region', async () => {
+    const existingRawHotel: IPersistedRawHotel = {
+      ...rawHotelFixture,
+      _id: new Types.ObjectId('662000000000000000000004'),
+      address: null,
+      addressMergeDedupeKey:
+        'JUBILEE|HOTELS|HILL RESORTS - TROODOS|TROODOS|4800|KYRIACOS MARKIDES (JUBILEE) LTD|+35725420107',
+      beds: 80,
+      contacts: {
+        domain: 'jubileehotel.com',
+        emails: ['gt@jubileehotel.com'],
+        faxes: ['+357 22 673 991'],
+        phones: ['+35725420107'],
+        websites: ['https://www.jubileehotel.com/'],
+      },
+      establishmentType: 'HOTELS',
+      locality: 'Troodos',
+      name: 'JUBILEE',
+      nameNormalized: 'JUBILEE',
+      operatorName: 'Kyriacos Markides (Jubilee) Ltd',
+      postcode: '4800',
+      region: 'HILL RESORTS - TROODOS',
+      rooms: 40,
+      strictHotelDedupeKey: 'JUBILEE|4800|+35725420107|40|80',
+    };
+    const parsedDuplicate: ICreateRawHotel = {
+      ...createRawHotelFixture,
+      address: null,
+      beds: 80,
+      contacts: {
+        domain: 'jubileehotel.com',
+        emails: ['gt@jubileehotel.com'],
+        faxes: [],
+        phones: ['+35722673991', '+35725420107'],
+        websites: ['https://www.jubileehotel.com/'],
+      },
+      establishmentType: 'HOTELS',
+      locality: 'Limassol',
+      name: 'JUBILEE',
+      nameNormalized: 'JUBILEE',
+      operatorName: 'Kyriacos Markides (Jubilee) Ltd',
+      postcode: '4800',
+      region: 'HILL RESORTS - TROODOS',
+      rooms: 40,
+    };
+
+    mockFindOneResults([null, existingRawHotel]);
+    mockUpdateOneResult();
+
+    await service.upsertManyByStrictHotelDedupeKeyAndSourceFileName([
+      parsedDuplicate,
+    ]);
+
+    expect(rawHotelModel.findOne).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        $and: expect.arrayContaining([
+          {
+            'sourceFile.filename': parsedDuplicate.sourceFile.filename,
+          },
+          expect.objectContaining({
+            beds: 80,
+            establishmentType: 'HOTELS',
+            nameNormalized: 'JUBILEE',
+            operatorName: 'Kyriacos Markides (Jubilee) Ltd',
+            postcode: '4800',
+            region: 'HILL RESORTS - TROODOS',
+            rooms: 40,
+          }),
+        ]),
+      }),
+    );
+    expect(rawHotelModel.updateOne).toHaveBeenCalledWith(
+      {
+        _id: existingRawHotel._id,
+      },
+      {
+        $set: expect.objectContaining({
+          contacts: {
+            domain: 'jubileehotel.com',
+            emails: ['gt@jubileehotel.com'],
+            faxes: ['+357 22 673 991'],
+            phones: ['+35725420107', '+35722673991'],
+            websites: ['https://www.jubileehotel.com/'],
+          },
+          locality: 'Troodos',
+          strictHotelDedupeKey: 'JUBILEE|4800|+35725420107|40|80',
+        }),
+      },
+    );
   });
 
   it('returns zero when upsertManyByStrictHotelDedupeKeyAndSourceFileName receives no records', async () => {

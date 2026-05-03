@@ -138,17 +138,30 @@ describe('HotelRegistryEntriesService', () => {
     existingEntry: IHotelRegistryEntry | null,
     upsertedEntry: IHotelRegistryEntry,
   ): void {
-    hotelRegistryEntryModel.findOne
-      .mockReturnValueOnce({
+    const entries =
+      existingEntry === null
+        ? [existingEntry, null, upsertedEntry]
+        : [existingEntry, upsertedEntry];
+
+    for (const entry of entries) {
+      hotelRegistryEntryModel.findOne.mockReturnValueOnce({
         exec: jest
           .fn<Promise<IHotelRegistryEntry | null>, []>()
-          .mockResolvedValue(existingEntry),
-      })
-      .mockReturnValueOnce({
-        exec: jest
-          .fn<Promise<IHotelRegistryEntry | null>, []>()
-          .mockResolvedValue(upsertedEntry),
+          .mockResolvedValue(entry),
       });
+    }
+  }
+
+  function mockFindOneResultSequence(
+    entries: Array<IHotelRegistryEntry | null>,
+  ): void {
+    for (const entry of entries) {
+      hotelRegistryEntryModel.findOne.mockReturnValueOnce({
+        exec: jest
+          .fn<Promise<IHotelRegistryEntry | null>, []>()
+          .mockResolvedValue(entry),
+      });
+    }
   }
 
   function mockUpdateOneResult(): void {
@@ -326,6 +339,103 @@ describe('HotelRegistryEntriesService', () => {
     );
   });
 
+  it('updates a strong registry duplicate and resolves conflicting locality from district', async () => {
+    const existingEntry = buildRegistryEntry({
+      capacity: {
+        beds: 80,
+        rooms: 40,
+      },
+      contacts: {
+        domains: ['jubileehotel.com'],
+        emails: ['gt@jubileehotel.com'],
+        phones: ['+35725420107'],
+        websites: ['https://www.jubileehotel.com/'],
+      },
+      establishmentType: 'HOTELS',
+      location: {
+        address: null,
+        district: 'HILL RESORTS - TROODOS',
+        locality: 'Troodos',
+        postcode: '4800',
+      },
+      name: {
+        baseName: 'JUBILEE',
+        normalized: 'JUBILEE',
+        original: 'JUBILEE',
+        suffix: null,
+      },
+      operator: 'Kyriacos Markides (Jubilee) Ltd',
+      registryKey: 'rkv1|JUBILEE|HOTELS|HILL RESORTS TROODOS|TROODOS|4800|',
+    });
+    const rawDuplicate: IRawHotel = {
+      ...rawHotelFixture,
+      address: null,
+      beds: 80,
+      contacts: {
+        domain: 'jubileehotel.com',
+        emails: ['gt@jubileehotel.com'],
+        faxes: [],
+        phones: ['+35722673991', '+35725420107'],
+        websites: ['https://www.jubileehotel.com/'],
+      },
+      establishmentType: 'HOTELS',
+      locality: 'Limassol',
+      name: 'JUBILEE',
+      nameNormalized: 'JUBILEE',
+      operatorName: 'Kyriacos Markides (Jubilee) Ltd',
+      postcode: '4800',
+      region: 'HILL RESORTS - TROODOS',
+      rooms: 40,
+    };
+
+    mockFindOneResultSequence([null, existingEntry, existingEntry]);
+    mockUpdateOneResult();
+
+    await service.upsertFromRawHotel(rawDuplicate);
+
+    expect(hotelRegistryEntryModel.findOne).toHaveBeenNthCalledWith(2, {
+      $and: expect.arrayContaining([
+        expect.objectContaining({
+          'capacity.beds': 80,
+          'capacity.rooms': 40,
+          establishmentType: 'HOTELS',
+          'location.district': 'HILL RESORTS - TROODOS',
+          'location.postcode': '4800',
+          'name.normalized': 'JUBILEE',
+          operator: 'Kyriacos Markides (Jubilee) Ltd',
+          status: HOTEL_REGISTRY_ENTRY_STATUS.READY,
+        }),
+      ]),
+    });
+    expect(hotelRegistryEntryModel.updateOne).toHaveBeenCalledWith(
+      {
+        registryKey:
+          'rkv1|JUBILEE|HOTELS|HILL RESORTS TROODOS|TROODOS|4800|',
+      },
+      expect.objectContaining({
+        $set: expect.objectContaining({
+          contacts: {
+            domains: ['jubileehotel.com'],
+            emails: ['gt@jubileehotel.com'],
+            phones: ['+35722673991', '+35725420107'],
+            websites: ['https://www.jubileehotel.com/'],
+          },
+          location: {
+            address: null,
+            district: 'HILL RESORTS - TROODOS',
+            locality: 'Troodos',
+            postcode: '4800',
+          },
+          registryKey:
+            'rkv1|JUBILEE|HOTELS|HILL RESORTS TROODOS|TROODOS|4800|',
+        }),
+      }),
+      {
+        upsert: true,
+      },
+    );
+  });
+
   it('finds same-name multi-type groups across pending, claimed, and processed entries', async () => {
     const hotelEntry = buildRegistryEntry({
       establishmentType: 'HOTELS',
@@ -488,6 +598,69 @@ describe('HotelRegistryEntriesService', () => {
       'PALATAKIA 2',
       'PALATAKIA 3',
     ]);
+  });
+
+  it('finds same-type strong identity groups with district-resolvable locality conflicts', async () => {
+    const troodosEntry = buildRegistryEntry({
+      capacity: {
+        beds: 80,
+        rooms: 40,
+      },
+      contacts: {
+        domains: ['jubileehotel.com'],
+        emails: ['gt@jubileehotel.com'],
+        phones: ['+35725420107'],
+        websites: ['https://www.jubileehotel.com/'],
+      },
+      establishmentType: 'HOTELS',
+      location: {
+        address: null,
+        district: 'HILL RESORTS - TROODOS',
+        locality: 'Troodos',
+        postcode: '4800',
+      },
+      name: {
+        baseName: 'JUBILEE',
+        normalized: 'JUBILEE',
+        original: 'JUBILEE',
+        suffix: null,
+      },
+      operator: 'Kyriacos Markides (Jubilee) Ltd',
+      registryKey: 'jubilee-troodos',
+    });
+    const limassolEntry = buildRegistryEntry({
+      capacity: {
+        beds: 80,
+        rooms: 40,
+      },
+      contacts: {
+        domains: ['jubileehotel.com'],
+        emails: ['gt@jubileehotel.com'],
+        phones: ['+35722673991', '+35725420107'],
+        websites: ['https://www.jubileehotel.com/'],
+      },
+      establishmentType: 'HOTELS',
+      location: {
+        address: null,
+        district: 'HILL RESORTS - TROODOS',
+        locality: 'Limassol',
+        postcode: '4800',
+      },
+      name: {
+        baseName: 'JUBILEE',
+        normalized: 'JUBILEE',
+        original: 'JUBILEE',
+        suffix: null,
+      },
+      operator: 'Kyriacos Markides (Jubilee) Ltd',
+      registryKey: 'jubilee-limassol',
+    });
+
+    mockFindResult([troodosEntry, limassolEntry]);
+
+    const result = await service.readSafeCanonicalCandidateGroup(limassolEntry);
+
+    expect(result).toEqual([troodosEntry, limassolEntry]);
   });
 
   it('keeps raw hotel fields when input is a Mongoose document', async () => {

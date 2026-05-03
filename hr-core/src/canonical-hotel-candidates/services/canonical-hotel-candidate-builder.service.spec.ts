@@ -1046,6 +1046,138 @@ describe('CanonicalHotelCandidateBuilderService', () => {
     expect(result.location).toEqual(fullerEntry.location);
   });
 
+  it('collapses same-type strong identity duplicates and resolves locality from district', () => {
+    const troodosEntry = buildRegistryEntry({
+      capacity: {
+        beds: 80,
+        rooms: 40,
+      },
+      contacts: {
+        domains: ['jubileehotel.com'],
+        emails: ['gt@jubileehotel.com'],
+        phones: ['+35725420107'],
+        websites: ['https://www.jubileehotel.com/'],
+      },
+      establishmentType: 'HOTELS',
+      location: {
+        address: null,
+        district: 'HILL RESORTS - TROODOS',
+        locality: 'Troodos',
+        postcode: '4800',
+      },
+      name: {
+        baseName: 'JUBILEE',
+        normalized: 'JUBILEE',
+        original: 'JUBILEE',
+        suffix: null,
+      },
+      operator: 'Kyriacos Markides (Jubilee) Ltd',
+      registryKey: 'jubilee-troodos',
+    });
+    const limassolEntry = buildRegistryEntry({
+      capacity: {
+        beds: 80,
+        rooms: 40,
+      },
+      contacts: {
+        domains: ['jubileehotel.com'],
+        emails: ['gt@jubileehotel.com'],
+        phones: ['+35722673991', '+35725420107'],
+        websites: ['https://www.jubileehotel.com/'],
+      },
+      establishmentType: 'HOTELS',
+      location: {
+        address: null,
+        district: 'HILL RESORTS - TROODOS',
+        locality: 'Limassol',
+        postcode: '4800',
+      },
+      name: {
+        baseName: 'JUBILEE',
+        normalized: 'JUBILEE',
+        original: 'JUBILEE',
+        suffix: null,
+      },
+      operator: 'Kyriacos Markides (Jubilee) Ltd',
+      registryKey: 'jubilee-limassol',
+    });
+
+    const forwardResult = service.buildFromRegistryEntries([
+      limassolEntry,
+      troodosEntry,
+    ]);
+    const reverseResult = service.buildFromRegistryEntries([
+      troodosEntry,
+      limassolEntry,
+    ]);
+
+    expect(forwardResult.candidateKey).toBe(reverseResult.candidateKey);
+    expect(forwardResult.kind).toBe(CANONICAL_HOTEL_KIND.SINGLE_PROPERTY);
+    expect(forwardResult.build.rule).toBe(
+      'same_name_same_type_strong_identity_prefer_best_location',
+    );
+    expect(forwardResult.location.locality).toBe('Troodos');
+    expect(forwardResult.contacts.phones).toEqual([
+      '+35722673991',
+      '+35725420107',
+    ]);
+  });
+
+  it('does not collapse same-type strong identity candidates with conflicting addresses', () => {
+    const firstEntry = buildRegistryEntry({
+      contacts: {
+        domains: ['jubileehotel.com'],
+        emails: ['gt@jubileehotel.com'],
+        phones: ['+35725420107'],
+        websites: ['https://www.jubileehotel.com/'],
+      },
+      establishmentType: 'HOTELS',
+      location: {
+        address: '1 Troodos Road',
+        district: 'HILL RESORTS - TROODOS',
+        locality: 'Troodos',
+        postcode: '4800',
+      },
+      name: {
+        baseName: 'JUBILEE',
+        normalized: 'JUBILEE',
+        original: 'JUBILEE',
+        suffix: null,
+      },
+      operator: 'Kyriacos Markides (Jubilee) Ltd',
+      registryKey: 'jubilee-troodos',
+    });
+    const secondEntry = buildRegistryEntry({
+      contacts: {
+        domains: ['jubileehotel.com'],
+        emails: ['gt@jubileehotel.com'],
+        phones: ['+35725420107'],
+        websites: ['https://www.jubileehotel.com/'],
+      },
+      establishmentType: 'HOTELS',
+      location: {
+        address: '99 Limassol Avenue',
+        district: 'HILL RESORTS - TROODOS',
+        locality: 'Limassol',
+        postcode: '4800',
+      },
+      name: {
+        baseName: 'JUBILEE',
+        normalized: 'JUBILEE',
+        original: 'JUBILEE',
+        suffix: null,
+      },
+      operator: 'Kyriacos Markides (Jubilee) Ltd',
+      registryKey: 'jubilee-limassol',
+    });
+
+    const result = service.buildFromRegistryEntries([firstEntry, secondEntry]);
+
+    expect(result.kind).toBe(CANONICAL_HOTEL_KIND.SINGLE_PROPERTY);
+    expect(result.build.rule).toBe('single_registry_entry');
+    expect(result.candidateKey).toBe('ccv1|single|jubilee-troodos');
+  });
+
   it('blocks an ambiguous base candidate that matches a numeric suffix group', () => {
     const entry = buildRegistryEntry({
       capacity: {

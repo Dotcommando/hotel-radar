@@ -67,17 +67,21 @@ export class HotelRegistryEntriesService {
         registryKey,
       })
       .exec();
+    const targetEntry =
+      existingEntry ??
+      (await this.readStrongDuplicateRegistryEntry(normalizedRawHotel));
+    const targetRegistryKey = targetEntry?.registryKey ?? registryKey;
     const entryFields = this.buildRegistryEntryFields(
       normalizedRawHotel,
-      registryKey,
-      existingEntry,
+      targetRegistryKey,
+      targetEntry,
     );
     const now = new Date();
 
     await this.hotelRegistryEntryModel
       .updateOne(
         {
-          registryKey,
+          registryKey: targetRegistryKey,
         },
         {
           $set: {
@@ -104,12 +108,14 @@ export class HotelRegistryEntriesService {
 
     const entry = await this.hotelRegistryEntryModel
       .findOne({
-        registryKey,
+        registryKey: targetRegistryKey,
       })
       .exec();
 
     if (entry === null) {
-      throw new Error(`Failed to upsert hotel registry entry: ${registryKey}`);
+      throw new Error(
+        `Failed to upsert hotel registry entry: ${targetRegistryKey}`,
+      );
     }
 
     return {
@@ -278,6 +284,9 @@ export class HotelRegistryEntriesService {
 
     if (
       this.isSafeSameNameMultiTypeGroup(sameNameEntries) ||
+      this.isSafeSameNameSameTypeStrongIdentityCollapseGroup(
+        sameNameEntries,
+      ) ||
       this.isSafeSameNameSameTypeCollapseGroup(sameNameEntries)
     ) {
       return sameNameEntries;
@@ -403,6 +412,51 @@ export class HotelRegistryEntriesService {
       .exec();
   }
 
+  private async readStrongDuplicateRegistryEntry(
+    rawHotel: IRawHotel,
+  ): Promise<IHotelRegistryEntry | null> {
+    const rawContacts = {
+      domains: normalizeRegistryDomains([rawHotel.contacts.domain]),
+      emails: normalizeRegistryEmails(rawHotel.contacts.emails),
+      phones: splitAndNormalizeRegistryPhones(rawHotel.contacts.phones),
+      websites: normalizeRegistryWebsites(rawHotel.contacts.websites),
+    };
+    const contactFilters = this.buildMeaningfulRegistryContactOverlapFilters(
+      rawContacts,
+    );
+
+    if (
+      contactFilters.length === 0 ||
+      rawHotel.rooms === null ||
+      rawHotel.beds === null ||
+      rawHotel.postcode === null ||
+      rawHotel.operatorName === null
+    ) {
+      return null;
+    }
+
+    return this.hotelRegistryEntryModel
+      .findOne({
+        $and: [
+          {
+            'capacity.beds': rawHotel.beds,
+            'capacity.rooms': rawHotel.rooms,
+            establishmentType: rawHotel.establishmentType,
+            'location.district': rawHotel.region,
+            'location.postcode': rawHotel.postcode,
+            'name.normalized': normalizeRegistryName(rawHotel.nameNormalized),
+            operator: rawHotel.operatorName,
+            status: HOTEL_REGISTRY_ENTRY_STATUS.READY,
+          },
+          this.buildCompatibleRegistryAddressFilter(rawHotel.address),
+          {
+            $or: contactFilters,
+          },
+        ],
+      })
+      .exec();
+  }
+
   private buildSafeNumericSuffixGroupFilter(
     entry: IHotelRegistryEntry,
   ): Record<string, unknown> | null {
@@ -508,6 +562,26 @@ export class HotelRegistryEntriesService {
     );
   }
 
+  private isSafeSameNameSameTypeStrongIdentityCollapseGroup(
+    entries: IHotelRegistryEntry[],
+  ): boolean {
+    if (entries.length < 2 || !this.hasOneNormalizedName(entries)) {
+      return false;
+    }
+
+    const establishmentTypes = new Set(
+      entries.map(({ establishmentType }) => establishmentType),
+    );
+
+    return (
+      establishmentTypes.size === 1 &&
+      this.allEntriesHaveMeaningfulContactOverlap(entries) &&
+      this.allEntriesHaveStrongIdentityDuplicateLocation(entries) &&
+      this.allEntriesHaveCompatibleOperator(entries) &&
+      this.hasExactCapacityForCollapse(entries)
+    );
+  }
+
   private hasOneNormalizedName(entries: IHotelRegistryEntry[]): boolean {
     const firstName = entries[0].name.normalized;
 
@@ -581,6 +655,83 @@ export class HotelRegistryEntriesService {
     );
   }
 
+  private allEntriesHaveStrongIdentityDuplicateLocation(
+    entries: IHotelRegistryEntry[],
+  ): boolean {
+    return this.allEntryPairsMatch(entries, (left, right) =>
+      this.hasStrongIdentityDuplicateLocation(left, right),
+    );
+  }
+
+  private hasStrongIdentityDuplicateLocation(
+    left: IHotelRegistryEntry,
+    right: IHotelRegistryEntry,
+  ): boolean {
+    if (
+      this.hasConflictingValue(
+        left.location.postcode,
+        right.location.postcode,
+      ) ||
+      this.hasConflictingValue(
+        left.location.district,
+        right.location.district,
+      )
+    ) {
+      return false;
+    }
+
+    if (left.location.address !== null && right.location.address !== null) {
+      return this.hasCompatibleAddress(
+        left.location.address,
+        right.location.address,
+      );
+    }
+
+    return this.resolveLocalityFromDistrict(left, right) !== null;
+  }
+
+  private resolveLocalityFromDistrict(
+    left: IHotelRegistryEntry,
+    right: IHotelRegistryEntry,
+  ): string | null {
+    if (left.location.locality === null) {
+      return right.location.locality;
+    }
+
+    if (
+      right.location.locality === null ||
+      this.hasCompatibleLocationText(
+        left.location.locality,
+        right.location.locality,
+      )
+    ) {
+      return left.location.locality;
+    }
+
+    const district = left.location.district ?? right.location.district ?? null;
+    const normalizedDistrict = normalizeRegistryText(district);
+    const normalizedLeftLocality = normalizeRegistryText(left.location.locality);
+    const normalizedRightLocality = normalizeRegistryText(
+      right.location.locality,
+    );
+    const districtMatchesLeft =
+      normalizedLeftLocality.length > 0 &&
+      normalizedDistrict.includes(normalizedLeftLocality);
+    const districtMatchesRight =
+      normalizedRightLocality.length > 0 &&
+      normalizedDistrict.includes(normalizedRightLocality);
+
+    if (districtMatchesLeft && !districtMatchesRight) {
+      return left.location.locality;
+    }
+
+    if (districtMatchesRight && !districtMatchesLeft) {
+      return right.location.locality;
+    }
+
+    return null;
+  }
+
   private hasCompatibleCapacityForCollapse(
     entries: IHotelRegistryEntry[],
   ): boolean {
@@ -605,6 +756,16 @@ export class HotelRegistryEntriesService {
 
       return true;
     });
+  }
+
+  private hasExactCapacityForCollapse(entries: IHotelRegistryEntry[]): boolean {
+    const firstEntry = entries[0];
+
+    return entries.every(
+      ({ capacity }) =>
+        capacity.rooms === firstEntry.capacity.rooms &&
+        capacity.beds === firstEntry.capacity.beds,
+    );
   }
 
   private hasSameNonEmptyValue(
@@ -949,6 +1110,12 @@ export class HotelRegistryEntriesService {
       this.normalizeExistingIssues(existingEntry, existingCapacity),
       rawIssues,
     );
+    const rawLocation = {
+      address: rawHotel.address,
+      district: rawHotel.region,
+      locality: rawHotel.locality,
+      postcode: rawHotel.postcode,
+    };
 
     return {
       capacity,
@@ -960,12 +1127,7 @@ export class HotelRegistryEntriesService {
       }),
       establishmentType: rawHotel.establishmentType,
       issues,
-      location: {
-        address: rawHotel.address,
-        district: rawHotel.region,
-        locality: rawHotel.locality,
-        postcode: rawHotel.postcode,
-      },
+      location: this.mergeLocation(existingEntry?.location ?? null, rawLocation),
       name: {
         baseName: nameParts.baseName,
         normalized: nameNormalized,
@@ -978,6 +1140,123 @@ export class HotelRegistryEntriesService {
         issues.length === 0
           ? HOTEL_REGISTRY_ENTRY_STATUS.READY
           : HOTEL_REGISTRY_ENTRY_STATUS.BLOCKED,
+    };
+  }
+
+  private mergeLocation(
+    existingLocation: IHotelLocation | null,
+    rawLocation: IHotelLocation,
+  ): IHotelLocation {
+    if (existingLocation === null) {
+      return rawLocation;
+    }
+
+    return {
+      address: existingLocation.address ?? rawLocation.address,
+      district: existingLocation.district ?? rawLocation.district,
+      locality: this.selectResolvedLocality(
+        existingLocation.locality,
+        rawLocation.locality,
+        rawLocation.district ?? existingLocation.district,
+      ),
+      postcode: existingLocation.postcode ?? rawLocation.postcode,
+    };
+  }
+
+  private selectResolvedLocality(
+    existingLocality: string | null,
+    incomingLocality: string | null,
+    district: string | null,
+  ): string | null {
+    if (existingLocality === null) {
+      return incomingLocality;
+    }
+
+    if (
+      incomingLocality === null ||
+      this.hasCompatibleLocationText(existingLocality, incomingLocality)
+    ) {
+      return existingLocality;
+    }
+
+    const normalizedDistrict = normalizeRegistryText(district);
+    const normalizedExistingLocality = normalizeRegistryText(existingLocality);
+    const normalizedIncomingLocality = normalizeRegistryText(incomingLocality);
+    const districtMatchesExisting =
+      normalizedExistingLocality.length > 0 &&
+      normalizedDistrict.includes(normalizedExistingLocality);
+    const districtMatchesIncoming =
+      normalizedIncomingLocality.length > 0 &&
+      normalizedDistrict.includes(normalizedIncomingLocality);
+
+    if (districtMatchesExisting && !districtMatchesIncoming) {
+      return existingLocality;
+    }
+
+    if (districtMatchesIncoming && !districtMatchesExisting) {
+      return incomingLocality;
+    }
+
+    return existingLocality;
+  }
+
+  private buildMeaningfulRegistryContactOverlapFilters(
+    contacts: IHotelContacts,
+  ): Array<Record<string, unknown>> {
+    const filters: Array<Record<string, unknown>> = [];
+
+    if (contacts.emails.length > 0) {
+      filters.push({
+        'contacts.emails': {
+          $in: contacts.emails,
+        },
+      });
+    }
+
+    const nonSharedDomains = contacts.domains.filter(
+      (domain) => !SHARED_CHAIN_CONTACT_DOMAINS.has(domain),
+    );
+
+    if (nonSharedDomains.length > 0) {
+      filters.push({
+        'contacts.domains': {
+          $in: nonSharedDomains,
+        },
+      });
+    }
+
+    const nonSharedWebsites = contacts.websites.filter(
+      (website) =>
+        !SHARED_CHAIN_CONTACT_DOMAINS.has(this.normalizeWebsiteHost(website)),
+    );
+
+    if (nonSharedWebsites.length > 0) {
+      filters.push({
+        'contacts.websites': {
+          $in: nonSharedWebsites,
+        },
+      });
+    }
+
+    return filters;
+  }
+
+  private buildCompatibleRegistryAddressFilter(
+    address: string | null,
+  ): Record<string, unknown> {
+    if (address === null || address.trim().length === 0) {
+      return {};
+    }
+
+    return {
+      $or: [
+        {
+          'location.address': address,
+        },
+        {
+          'location.address': null,
+        },
+      ],
     };
   }
 
