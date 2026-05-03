@@ -1,6 +1,35 @@
-import { normalizeHotelNameAndClass } from './hotel-name-class-normalization.util';
+import {
+  cleanHotelName,
+  normalizeHotelNameAndClass,
+} from './hotel-name-class-normalization.util';
+
+describe('cleanHotelName', () => {
+  it.each([
+    ["DANIEL'S B'", "DANIEL'S"],
+    ["SOME HOTEL A'", 'SOME HOTEL'],
+    ["SOME HOTEL C'", 'SOME HOTEL'],
+    ['ABC HOTEL', 'ABC HOTEL'],
+    ['HOTEL BOUTIQUE', 'HOTEL BOUTIQUE'],
+    ["B' HOUSE", "B' HOUSE"],
+  ])('cleans only trailing Cyprus class suffix from %s', (name, expected) => {
+    expect(cleanHotelName(name)).toBe(expected);
+  });
+});
 
 describe('normalizeHotelNameAndClass', () => {
+  it('cleans trailing Cyprus class suffix before saving hotel name', () => {
+    expect(
+      normalizeHotelNameAndClass({
+        classRaw: null,
+        name: "DANIEL'S B'",
+      }),
+    ).toEqual({
+      classRaw: null,
+      name: "DANIEL'S",
+      nameNormalized: "DANIEL'S",
+    });
+  });
+
   it('keeps a numeric classRaw token as a hotel name suffix when class is already lost', () => {
     expect(
       normalizeHotelNameAndClass({

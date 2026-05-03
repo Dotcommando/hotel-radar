@@ -12,11 +12,17 @@ export interface INormalizedHotelNameClassFields {
 }
 
 const NUMERIC_CLASS_AS_NAME_SUFFIX_PATTERN = /^\d{1,3}$/u;
+const TRAILING_CYPRUS_CLASS_SUFFIX_PATTERN = /\s+[ABC]'$/iu;
+
+export function cleanHotelName(name: string): string {
+  return name.replace(TRAILING_CYPRUS_CLASS_SUFFIX_PATTERN, '').trim();
+}
 
 export function normalizeHotelNameAndClass(
   fields: IHotelNameClassFields,
 ): INormalizedHotelNameClassFields {
-  const normalizedName = normalizeHotelName(fields.name);
+  const cleanName = cleanHotelName(fields.name);
+  const normalizedName = normalizeHotelName(cleanName);
   const classRaw = fields.classRaw?.trim() ?? null;
 
   if (
@@ -26,12 +32,12 @@ export function normalizeHotelNameAndClass(
   ) {
     return {
       classRaw: fields.classRaw,
-      name: fields.name,
+      name: cleanName,
       nameNormalized: normalizedName,
     };
   }
 
-  const name = `${fields.name.trim()} ${classRaw}`;
+  const name = `${cleanName} ${classRaw}`;
 
   return {
     classRaw: null,
