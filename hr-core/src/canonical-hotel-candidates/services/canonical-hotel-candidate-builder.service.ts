@@ -20,6 +20,11 @@ const SHARED_CHAIN_CONTACT_DOMAINS = new Set([
   'tsokkos.com',
 ]);
 
+interface INumericSuffixArtifactComponent {
+  entry: IHotelRegistryEntry;
+  name: string;
+}
+
 @Injectable()
 export class CanonicalHotelCandidateBuilderService {
   buildFromRegistryEntries(
@@ -27,6 +32,10 @@ export class CanonicalHotelCandidateBuilderService {
   ): ICreateCanonicalHotelCandidate {
     if (entries.length === 0) {
       throw new Error('Cannot build a canonical candidate from empty entries.');
+    }
+
+    if (this.isSafeNumericSuffixArtifactGroup(entries)) {
+      return this.buildNumericSuffixArtifactGroupedCandidate(entries);
     }
 
     if (this.isSafeNumericSuffixGroup(entries)) {
@@ -144,6 +153,57 @@ export class CanonicalHotelCandidateBuilderService {
       kind: CANONICAL_HOTEL_KIND.PROPERTY_COMPLEX,
       location: firstEntry.location,
       operator: firstEntry.operator,
+      processing: {
+        canonicalHotelId: null,
+        claimedAt: null,
+        error: null,
+        processedAt: null,
+        runId: null,
+        status: HOTEL_PROCESSING_STATUS.PENDING,
+      },
+      status: CANONICAL_HOTEL_CANDIDATE_STATUS.READY,
+    };
+  }
+
+  private buildNumericSuffixArtifactGroupedCandidate(
+    entries: IHotelRegistryEntry[],
+  ): ICreateCanonicalHotelCandidate {
+    const sortedEntries = this.sortNumericSuffixArtifactEntries(entries);
+    const componentEntries =
+      this.buildNumericSuffixArtifactComponents(sortedEntries);
+    const firstComponentEntry = componentEntries[0].entry;
+
+    return {
+      build: {
+        issues: [],
+        rule: 'numeric_suffix_group',
+        ruleVersion: 1,
+      },
+      candidateKey:
+        this.buildNumericSuffixGroupCandidateKey(firstComponentEntry),
+      canonicalName: firstComponentEntry.name.baseName,
+      capacity: {
+        beds: this.sumNullableNumbers(
+          componentEntries.map(({ entry }) => entry.capacity.beds),
+        ),
+        mode: CANONICAL_HOTEL_CAPACITY_MODE.SUM_COMPONENTS,
+        rooms: this.sumNullableNumbers(
+          componentEntries.map(({ entry }) => entry.capacity.rooms),
+        ),
+      },
+      components: componentEntries.map(({ entry, name }) => ({
+        beds: entry.capacity.beds,
+        establishmentType: entry.establishmentType,
+        name,
+        rooms: entry.capacity.rooms,
+      })),
+      contacts: this.mergeContacts(sortedEntries),
+      kind: CANONICAL_HOTEL_KIND.PROPERTY_COMPLEX,
+      location: this.mergeLocation(
+        this.findBestLocationEntry(sortedEntries),
+        sortedEntries,
+      ),
+      operator: this.findBestOperator(firstComponentEntry, sortedEntries),
       processing: {
         canonicalHotelId: null,
         claimedAt: null,
@@ -312,6 +372,27 @@ export class CanonicalHotelCandidateBuilderService {
     );
   }
 
+  private isSafeNumericSuffixArtifactGroup(
+    entries: IHotelRegistryEntry[],
+  ): boolean {
+    if (entries.length < 2 || !this.hasOneBaseName(entries)) {
+      return false;
+    }
+
+    const suffixEntries = entries.filter((entry) =>
+      this.hasPlausibleNumericSuffix(entry),
+    );
+    const baseEntries = entries.filter((entry) => entry.name.suffix === null);
+
+    if (suffixEntries.length === 0 || baseEntries.length === 0) {
+      return false;
+    }
+
+    return this.allEntryPairsMatch(entries, (left, right) =>
+      this.isSafeNumericSuffixArtifactPair(left, right),
+    );
+  }
+
   private buildNumericSuffixGroupCandidateKey(
     entry: IHotelRegistryEntry,
   ): string {
@@ -373,6 +454,30 @@ export class CanonicalHotelCandidateBuilderService {
       this.hasCompatibleNumericSuffixLocation(left, right) &&
       this.hasMeaningfulContactOverlap(left, right) &&
       this.hasCompatibleOperator(left, right)
+    );
+  }
+
+  private isSafeNumericSuffixArtifactPair(
+    left: IHotelRegistryEntry,
+    right: IHotelRegistryEntry,
+  ): boolean {
+    return (
+      left.status === HOTEL_REGISTRY_ENTRY_STATUS.READY &&
+      right.status === HOTEL_REGISTRY_ENTRY_STATUS.READY &&
+      left.issues.length === 0 &&
+      right.issues.length === 0 &&
+      left.name.baseName === right.name.baseName &&
+      (left.name.suffix === null || this.hasPlausibleNumericSuffix(left)) &&
+      (right.name.suffix === null || this.hasPlausibleNumericSuffix(right)) &&
+      left.location.postcode !== null &&
+      right.location.postcode !== null &&
+      this.hasSameNonEmptyValue(
+        left.location.postcode,
+        right.location.postcode,
+      ) &&
+      this.hasCompatibleNumericSuffixLocation(left, right) &&
+      this.hasMeaningfulContactOverlap(left, right) &&
+      this.hasStrictNumericSuffixArtifactOperator(left, right)
     );
   }
 
@@ -439,6 +544,12 @@ export class CanonicalHotelCandidateBuilderService {
     const firstName = entries[0].name.normalized;
 
     return entries.every(({ name }) => name.normalized === firstName);
+  }
+
+  private hasOneBaseName(entries: IHotelRegistryEntry[]): boolean {
+    const firstName = entries[0].name.baseName;
+
+    return entries.every(({ name }) => name.baseName === firstName);
   }
 
   private allEntriesHaveMeaningfulContactOverlap(
@@ -905,6 +1016,17 @@ export class CanonicalHotelCandidateBuilderService {
     );
   }
 
+  private hasStrictNumericSuffixArtifactOperator(
+    left: IHotelRegistryEntry,
+    right: IHotelRegistryEntry,
+  ): boolean {
+    return (
+      left.operator === null ||
+      right.operator === null ||
+      this.hasSameNonEmptyValue(left.operator, right.operator)
+    );
+  }
+
   private normalizeAddressForCompare(value: string | null): string {
     return this.normalizeText(value)
       .replace(/\bSTR\b/gu, 'STREET')
@@ -1098,12 +1220,95 @@ export class CanonicalHotelCandidateBuilderService {
     });
   }
 
+  private sortNumericSuffixArtifactEntries(
+    entries: IHotelRegistryEntry[],
+  ): IHotelRegistryEntry[] {
+    return entries.slice().sort((left, right) => {
+      const leftSuffixNumber = this.readNumericSuffixNumber(left.name.suffix);
+      const rightSuffixNumber = this.readNumericSuffixNumber(right.name.suffix);
+
+      if (leftSuffixNumber !== null && rightSuffixNumber !== null) {
+        return leftSuffixNumber - rightSuffixNumber;
+      }
+
+      if (leftSuffixNumber !== null) {
+        return -1;
+      }
+
+      if (rightSuffixNumber !== null) {
+        return 1;
+      }
+
+      return left.registryKey.localeCompare(right.registryKey);
+    });
+  }
+
+  private buildNumericSuffixArtifactComponents(
+    entries: IHotelRegistryEntry[],
+  ): INumericSuffixArtifactComponent[] {
+    const components: INumericSuffixArtifactComponent[] = [];
+    let nextInferredSuffix =
+      Math.max(
+        ...entries
+          .map(({ name }) => this.readNumericSuffixNumber(name.suffix))
+          .filter((value): value is number => value !== null),
+      ) + 1;
+
+    for (const entry of this.sortNumericSuffixArtifactEntries(entries)) {
+      const suffixNumber = this.readNumericSuffixNumber(entry.name.suffix);
+
+      if (suffixNumber !== null) {
+        components.push({
+          entry,
+          name: entry.name.original,
+        });
+        continue;
+      }
+
+      if (
+        components.some((component) =>
+          this.isDuplicateNumericSuffixArtifactComponent(
+            component.entry,
+            entry,
+          ),
+        )
+      ) {
+        continue;
+      }
+
+      components.push({
+        entry,
+        name: `${entry.name.baseName} ${nextInferredSuffix}`,
+      });
+      nextInferredSuffix += 1;
+    }
+
+    return components;
+  }
+
+  private isDuplicateNumericSuffixArtifactComponent(
+    componentEntry: IHotelRegistryEntry,
+    artifactEntry: IHotelRegistryEntry,
+  ): boolean {
+    return (
+      componentEntry.establishmentType === artifactEntry.establishmentType &&
+      componentEntry.capacity.rooms === artifactEntry.capacity.rooms &&
+      componentEntry.capacity.beds === artifactEntry.capacity.beds
+    );
+  }
+
   private readNumericSuffixNumber(value: string | null): number | null {
     if (value === null || !/^\d+[A-Z]?$/.test(value)) {
       return null;
     }
 
     return Number.parseInt(value, 10);
+  }
+
+  private hasPlausibleNumericSuffix(entry: IHotelRegistryEntry): boolean {
+    const suffixNumber = this.readNumericSuffixNumber(entry.name.suffix);
+
+    return suffixNumber !== null && suffixNumber <= 100;
   }
 
   private sumNullableNumbers(values: Array<number | null>): number | null {

@@ -265,6 +265,13 @@ export class HotelRegistryEntriesService {
       return numericSuffixGroup;
     }
 
+    const numericSuffixArtifactGroup =
+      await this.readSafeNumericSuffixArtifactGroup(entry);
+
+    if (numericSuffixArtifactGroup.length > 1) {
+      return numericSuffixArtifactGroup;
+    }
+
     const sameNameEntries = await this.hotelRegistryEntryModel
       .find({
         'name.normalized': entry.name.normalized,
@@ -293,6 +300,48 @@ export class HotelRegistryEntriesService {
     }
 
     return [entry];
+  }
+
+  async readSafeNumericSuffixArtifactGroup(
+    entry: IHotelRegistryEntry,
+  ): Promise<IHotelRegistryEntry[]> {
+    if (
+      entry.status !== HOTEL_REGISTRY_ENTRY_STATUS.READY ||
+      entry.name.baseName.trim().length === 0
+    ) {
+      return [entry];
+    }
+
+    const entries = await this.hotelRegistryEntryModel
+      .find({
+        'name.baseName': entry.name.baseName,
+        'processing.status': {
+          $in: [
+            HOTEL_PROCESSING_STATUS.PENDING,
+            HOTEL_PROCESSING_STATUS.CLAIMED,
+            HOTEL_PROCESSING_STATUS.PROCESSED,
+          ],
+        },
+        status: HOTEL_REGISTRY_ENTRY_STATUS.READY,
+      })
+      .sort({
+        _id: 1,
+      })
+      .exec();
+    const safeEntries = this.sortNumericSuffixArtifactEntries(entries).filter(
+      (candidate) => this.isSafeNumericSuffixArtifactPair(entry, candidate),
+    );
+
+    if (
+      !this.isSafeNumericSuffixArtifactGroup(safeEntries) ||
+      !this.allEntryPairsMatch(safeEntries, (left, right) =>
+        this.isSafeNumericSuffixArtifactPair(left, right),
+      )
+    ) {
+      return [entry];
+    }
+
+    return safeEntries;
   }
 
   async hasCompatibleNumericSuffixGroup(
@@ -514,6 +563,45 @@ export class HotelRegistryEntriesService {
     );
   }
 
+  private isSafeNumericSuffixArtifactGroup(
+    entries: IHotelRegistryEntry[],
+  ): boolean {
+    if (entries.length < 2 || !this.hasOneBaseName(entries)) {
+      return false;
+    }
+
+    const suffixEntries = entries.filter((entry) =>
+      this.hasPlausibleNumericSuffix(entry),
+    );
+    const baseEntries = entries.filter((entry) => entry.name.suffix === null);
+
+    return suffixEntries.length > 0 && baseEntries.length > 0;
+  }
+
+  private isSafeNumericSuffixArtifactPair(
+    left: IHotelRegistryEntry,
+    right: IHotelRegistryEntry,
+  ): boolean {
+    return (
+      left.status === HOTEL_REGISTRY_ENTRY_STATUS.READY &&
+      right.status === HOTEL_REGISTRY_ENTRY_STATUS.READY &&
+      left.issues.length === 0 &&
+      right.issues.length === 0 &&
+      left.name.baseName === right.name.baseName &&
+      (left.name.suffix === null || this.hasPlausibleNumericSuffix(left)) &&
+      (right.name.suffix === null || this.hasPlausibleNumericSuffix(right)) &&
+      left.location.postcode !== null &&
+      right.location.postcode !== null &&
+      this.hasSameNonEmptyValue(
+        left.location.postcode,
+        right.location.postcode,
+      ) &&
+      this.hasCompatibleNumericSuffixLocation(left, right) &&
+      this.hasMeaningfulContactOverlap(left, right) &&
+      this.hasStrictNumericSuffixArtifactOperator(left, right)
+    );
+  }
+
   private isEmptyContacts(contacts: IHotelContacts): boolean {
     return (
       contacts.domains.length === 0 &&
@@ -586,6 +674,12 @@ export class HotelRegistryEntriesService {
     const firstName = entries[0].name.normalized;
 
     return entries.every(({ name }) => name.normalized === firstName);
+  }
+
+  private hasOneBaseName(entries: IHotelRegistryEntry[]): boolean {
+    const firstName = entries[0].name.baseName;
+
+    return entries.every(({ name }) => name.baseName === firstName);
   }
 
   private allEntriesHaveMeaningfulContactOverlap(
@@ -927,6 +1021,17 @@ export class HotelRegistryEntriesService {
     );
   }
 
+  private hasStrictNumericSuffixArtifactOperator(
+    left: IHotelRegistryEntry,
+    right: IHotelRegistryEntry,
+  ): boolean {
+    return (
+      left.operator === null ||
+      right.operator === null ||
+      this.hasSameNonEmptyValue(left.operator, right.operator)
+    );
+  }
+
   private normalizeAddressForCompare(value: string | null): string {
     return normalizeRegistryText(value)
       .replace(/\bSTR\b/gu, 'STREET')
@@ -1067,12 +1172,41 @@ export class HotelRegistryEntriesService {
     });
   }
 
+  private sortNumericSuffixArtifactEntries(
+    entries: IHotelRegistryEntry[],
+  ): IHotelRegistryEntry[] {
+    return entries.slice().sort((left, right) => {
+      const leftSuffixNumber = this.readNumericSuffixNumber(left.name.suffix);
+      const rightSuffixNumber = this.readNumericSuffixNumber(right.name.suffix);
+
+      if (leftSuffixNumber !== null && rightSuffixNumber !== null) {
+        return leftSuffixNumber - rightSuffixNumber;
+      }
+
+      if (leftSuffixNumber !== null) {
+        return -1;
+      }
+
+      if (rightSuffixNumber !== null) {
+        return 1;
+      }
+
+      return left.registryKey.localeCompare(right.registryKey);
+    });
+  }
+
   private readNumericSuffixNumber(value: string | null): number | null {
     if (value === null || !/^\d+[A-Z]?$/.test(value)) {
       return null;
     }
 
     return Number.parseInt(value, 10);
+  }
+
+  private hasPlausibleNumericSuffix(entry: IHotelRegistryEntry): boolean {
+    const suffixNumber = this.readNumericSuffixNumber(entry.name.suffix);
+
+    return suffixNumber !== null && suffixNumber <= 100;
   }
 
   private buildRegistryEntryFields(

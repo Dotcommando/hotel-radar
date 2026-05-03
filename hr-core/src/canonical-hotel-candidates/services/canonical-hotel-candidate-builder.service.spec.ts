@@ -390,6 +390,124 @@ describe('CanonicalHotelCandidateBuilderService', () => {
     ]);
   });
 
+  it('builds one PALATAKIA candidate from latest-like suffix and base artifacts', () => {
+    const suffixEntry = buildRegistryEntry({
+      capacity: {
+        beds: 10,
+        rooms: 5,
+      },
+      contacts: {
+        domains: ['palatakia.com'],
+        emails: ['info@palatakia.com'],
+        phones: ['+35799934807'],
+        websites: ['https://www.palatakia.com/'],
+      },
+      establishmentType: 'TRADITIONAL HOUSES - APARTMENTS',
+      location: {
+        address: null,
+        district: 'LARNACA',
+        locality: 'Larnaca',
+        postcode: '7714',
+      },
+      name: {
+        baseName: 'PALATAKIA',
+        normalized: 'PALATAKIA 2',
+        original: 'PALATAKIA 2',
+        suffix: '2',
+      },
+      operator: 'Corpaz Ltd',
+      registryKey: 'palatakia-2-apartments',
+    });
+    const duplicateBaseEntry = buildRegistryEntry({
+      capacity: {
+        beds: 10,
+        rooms: 5,
+      },
+      contacts: {
+        domains: ['palatakia.com'],
+        emails: ['info@palatakia.com'],
+        phones: ['+35799934807'],
+        websites: ['https://www.palatakia.com/'],
+      },
+      establishmentType: 'TRADITIONAL HOUSES - APARTMENTS',
+      location: {
+        address: null,
+        district: 'LARNACA',
+        locality: 'Kato Drys, Larnaca',
+        postcode: '7714',
+      },
+      name: {
+        baseName: 'PALATAKIA',
+        normalized: 'PALATAKIA',
+        original: 'PALATAKIA',
+        suffix: null,
+      },
+      operator: 'Corpaz Ltd',
+      registryKey: 'palatakia-base-apartments',
+    });
+    const missingSuffixEntry = buildRegistryEntry({
+      capacity: {
+        beds: 8,
+        rooms: 4,
+      },
+      contacts: {
+        domains: ['palatakia.com'],
+        emails: ['info@palatakia.com'],
+        phones: ['+35799934807'],
+        websites: ['https://www.palatakia.com/'],
+      },
+      establishmentType: 'TRADITIONAL HOUSES - HOTELS',
+      location: {
+        address: null,
+        district: 'LARNACA',
+        locality: 'K. Drys, Larnaca',
+        postcode: '7714',
+      },
+      name: {
+        baseName: 'PALATAKIA',
+        normalized: 'PALATAKIA',
+        original: 'PALATAKIA',
+        suffix: null,
+      },
+      operator: 'Corpaz Ltd',
+      registryKey: 'palatakia-base-hotels',
+    });
+
+    const result = service.buildFromRegistryEntries([
+      duplicateBaseEntry,
+      missingSuffixEntry,
+      suffixEntry,
+    ]);
+
+    expect(result.canonicalName).toBe('PALATAKIA');
+    expect(result.kind).toBe(CANONICAL_HOTEL_KIND.PROPERTY_COMPLEX);
+    expect(result.status).toBe(CANONICAL_HOTEL_CANDIDATE_STATUS.READY);
+    expect(result.build).toEqual({
+      issues: [],
+      rule: 'numeric_suffix_group',
+      ruleVersion: 1,
+    });
+    expect(result.capacity).toEqual({
+      beds: 18,
+      mode: CANONICAL_HOTEL_CAPACITY_MODE.SUM_COMPONENTS,
+      rooms: 9,
+    });
+    expect(result.components).toEqual([
+      {
+        beds: 10,
+        establishmentType: 'TRADITIONAL HOUSES - APARTMENTS',
+        name: 'PALATAKIA 2',
+        rooms: 5,
+      },
+      {
+        beds: 8,
+        establishmentType: 'TRADITIONAL HOUSES - HOTELS',
+        name: 'PALATAKIA 3',
+        rooms: 4,
+      },
+    ]);
+  });
+
   it('builds the stable Stage 2 grouped candidates with exact components', () => {
     const groupCases: IStableGroupCase[] = [
       {

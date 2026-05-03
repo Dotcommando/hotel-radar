@@ -454,4 +454,75 @@ describe('HotelProcessingBatchProcessor registry-to-candidates', () => {
       'run-1',
     );
   });
+
+  it('marks every PALATAKIA suffix artifact row with the grouped candidate id', async () => {
+    const suffixEntry = buildRegistryEntry({
+      name: {
+        baseName: 'PALATAKIA',
+        normalized: 'PALATAKIA 2',
+        original: 'PALATAKIA 2',
+        suffix: '2',
+      },
+      registryKey: 'palatakia-2-apartments',
+    });
+    const duplicateBaseEntry = buildRegistryEntry({
+      name: {
+        baseName: 'PALATAKIA',
+        normalized: 'PALATAKIA',
+        original: 'PALATAKIA',
+        suffix: null,
+      },
+      registryKey: 'palatakia-base-apartments',
+    });
+    const missingSuffixEntry = buildRegistryEntry({
+      name: {
+        baseName: 'PALATAKIA',
+        normalized: 'PALATAKIA',
+        original: 'PALATAKIA',
+        suffix: null,
+      },
+      registryKey: 'palatakia-base-hotels',
+    });
+    const candidateId = new Types.ObjectId();
+
+    hotelRegistryEntriesService.claimPendingForRun.mockResolvedValue([
+      missingSuffixEntry,
+    ]);
+    hotelRegistryEntriesService.readSafeCanonicalCandidateGroup.mockResolvedValue(
+      [suffixEntry, duplicateBaseEntry, missingSuffixEntry],
+    );
+    hotelRegistryEntriesService.hasCompatibleNumericSuffixGroup.mockResolvedValue(
+      false,
+    );
+    canonicalHotelCandidatesService.upsertFromRegistryEntries.mockResolvedValue(
+      buildCandidate(candidateId),
+    );
+    hotelRegistryEntriesService.countByProcessingStatus.mockResolvedValue(0);
+
+    await processor.processRegistryToCandidatesBatch({
+      batchNo: 1,
+      batchSize: 50,
+      runId: 'run-1',
+      stage: HOTEL_PROCESSING_STAGE.REGISTRY_TO_CANDIDATES,
+    });
+
+    expect(hotelRegistryEntriesService.markProcessed).toHaveBeenCalledWith(
+      suffixEntry._id,
+      candidateId,
+      'run-1',
+    );
+    expect(hotelRegistryEntriesService.markProcessed).toHaveBeenCalledWith(
+      duplicateBaseEntry._id,
+      candidateId,
+      'run-1',
+    );
+    expect(hotelRegistryEntriesService.markProcessed).toHaveBeenCalledWith(
+      missingSuffixEntry._id,
+      candidateId,
+      'run-1',
+    );
+    expect(
+      canonicalHotelCandidatesService.upsertAmbiguousBaseCandidate,
+    ).not.toHaveBeenCalled();
+  });
 });
