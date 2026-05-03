@@ -3,6 +3,7 @@ import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import { HOTEL_PROCESSING_STATUS } from '../hotel-processing/constants/hotel-processing-status.enum';
 import { IRawHotel } from '../raw-hotels/types/raw-hotel.interface';
+import { normalizeHotelLocation } from '../raw-hotels/utils/hotel-location-normalization.util';
 import { HOTEL_REGISTRY_ENTRY_MODEL_NAME } from './constants/hotel-registry-entry-model-name.constant';
 import { HOTEL_REGISTRY_ENTRY_STATUS } from './constants/hotel-registry-entry-status.enum';
 import { IHotelCapacity } from './types/hotel-capacity.interface';
@@ -32,13 +33,17 @@ export class HotelRegistryEntriesService {
   async upsertFromRawHotel(
     rawHotel: IRawHotel,
   ): Promise<IUpsertHotelRegistryEntryResult> {
+    const normalizedRawHotel = {
+      ...rawHotel,
+      ...normalizeHotelLocation(rawHotel),
+    };
     const registryKey = makeHotelRegistryKey({
-      address: rawHotel.address,
-      establishmentType: rawHotel.establishmentType,
-      locality: rawHotel.locality,
-      nameNormalized: rawHotel.nameNormalized,
-      postcode: rawHotel.postcode,
-      region: rawHotel.region,
+      address: normalizedRawHotel.address,
+      establishmentType: normalizedRawHotel.establishmentType,
+      locality: normalizedRawHotel.locality,
+      nameNormalized: normalizedRawHotel.nameNormalized,
+      postcode: normalizedRawHotel.postcode,
+      region: normalizedRawHotel.region,
     });
     const existingEntry = await this.hotelRegistryEntryModel
       .findOne({
@@ -46,7 +51,7 @@ export class HotelRegistryEntriesService {
       })
       .exec();
     const entryFields = this.buildRegistryEntryFields(
-      rawHotel,
+      normalizedRawHotel,
       registryKey,
       existingEntry,
     );
@@ -178,7 +183,7 @@ export class HotelRegistryEntriesService {
             },
           },
           {
-            new: true,
+            returnDocument: 'after',
             sort: {
               _id: 1,
             },
@@ -615,16 +620,24 @@ export class HotelRegistryEntriesService {
   } {
     const nameNormalized = normalizeRegistryName(rawHotel.nameNormalized);
     const nameParts = splitRegistryNameSuffix(nameNormalized);
-    const rawIssues = this.buildRawIssues(rawHotel);
+    const rawCapacity = this.normalizeParsedCapacity({
+      beds: rawHotel.beds,
+      rooms: rawHotel.rooms,
+    });
+    const existingCapacity =
+      existingEntry === null
+        ? null
+        : this.normalizeParsedCapacity(existingEntry.capacity);
+    const rawIssues = this.buildRawIssues(rawHotel, rawCapacity);
     const capacity = this.mergeCapacity(
-      existingEntry?.capacity ?? null,
-      {
-        beds: rawHotel.beds,
-        rooms: rawHotel.rooms,
-      },
+      existingCapacity,
+      rawCapacity,
       rawIssues,
     );
-    const issues = this.mergeIssues(existingEntry?.issues ?? [], rawIssues);
+    const issues = this.mergeIssues(
+      this.normalizeExistingIssues(existingEntry, existingCapacity),
+      rawIssues,
+    );
 
     return {
       capacity,
@@ -657,7 +670,10 @@ export class HotelRegistryEntriesService {
     };
   }
 
-  private buildRawIssues(rawHotel: IRawHotel): string[] {
+  private buildRawIssues(
+    rawHotel: IRawHotel,
+    rawCapacity: IHotelCapacity,
+  ): string[] {
     const issues: string[] = [];
 
     if (normalizeRegistryName(rawHotel.nameNormalized) === '') {
@@ -673,23 +689,62 @@ export class HotelRegistryEntriesService {
       issues.push('missing_required_identity_fields');
     }
 
-    if (rawHotel.rooms !== null && rawHotel.rooms <= 0) {
+    return this.mergeIssues(issues, this.buildCapacityIssues(rawCapacity));
+  }
+
+  private buildCapacityIssues(capacity: IHotelCapacity): string[] {
+    const issues: string[] = [];
+
+    if (capacity.rooms !== null && capacity.rooms <= 0) {
       issues.push('invalid_capacity');
     }
 
-    if (rawHotel.beds !== null && rawHotel.beds <= 0) {
+    if (capacity.beds !== null && capacity.beds <= 0) {
       issues.push('invalid_capacity');
     }
 
     if (
-      rawHotel.rooms !== null &&
-      rawHotel.beds !== null &&
-      rawHotel.rooms > rawHotel.beds
+      capacity.rooms !== null
+        && capacity.beds !== null
+        && capacity.rooms > capacity.beds
     ) {
       issues.push('invalid_capacity');
     }
 
     return this.mergeIssues([], issues);
+  }
+
+  private normalizeExistingIssues(
+    existingEntry: IHotelRegistryEntry | null,
+    existingCapacity: IHotelCapacity | null,
+  ): string[] {
+    if (
+      existingEntry === null
+        || !existingEntry.issues.includes('invalid_capacity')
+        || existingCapacity === null
+        || this.buildCapacityIssues(existingCapacity).includes(
+          'invalid_capacity',
+        )
+    ) {
+      return existingEntry?.issues ?? [];
+    }
+
+    return existingEntry.issues.filter((issue) => issue !== 'invalid_capacity');
+  }
+
+  private normalizeParsedCapacity(rawCapacity: IHotelCapacity): IHotelCapacity {
+    if (
+      rawCapacity.rooms !== null
+        && rawCapacity.beds !== null
+        && rawCapacity.rooms > rawCapacity.beds
+    ) {
+      return {
+        beds: rawCapacity.rooms,
+        rooms: rawCapacity.beds,
+      };
+    }
+
+    return rawCapacity;
   }
 
   private mergeCapacity(

@@ -22,6 +22,11 @@ interface IUpdateOneOptions {
   upsert?: boolean;
 }
 
+interface IFindOneAndUpdateOptions {
+  returnDocument?: 'after';
+  sort?: Record<string, 1 | -1>;
+}
+
 interface IDeleteManyResult {
   deletedCount?: number;
 }
@@ -49,6 +54,10 @@ interface IRawHotelModelMock {
   findOne: jest.Mock<
     ISortableExecable<IPersistedRawHotel | null>,
     [Record<string, unknown>]
+  >;
+  findOneAndUpdate: jest.Mock<
+    IExecable<IPersistedRawHotel | null>,
+    [Record<string, unknown>, Record<string, unknown>, IFindOneAndUpdateOptions]
   >;
   updateOne: jest.Mock<
     IExecable<IUpdateOneResult>,
@@ -118,6 +127,14 @@ describe('RawHotelsService', () => {
         ISortableExecable<IPersistedRawHotel | null>,
         [Record<string, unknown>]
       >(),
+      findOneAndUpdate: jest.fn<
+        IExecable<IPersistedRawHotel | null>,
+        [
+          Record<string, unknown>,
+          Record<string, unknown>,
+          IFindOneAndUpdateOptions,
+        ]
+      >(),
       insertMany: jest.fn<
         Promise<IRawHotel[]>,
         [ICreateRawHotel[], IInsertManyOptions]
@@ -158,6 +175,16 @@ describe('RawHotelsService', () => {
       .mockResolvedValue(result);
 
     rawHotelModel.updateOne.mockReturnValue({ exec });
+  }
+
+  function mockFindOneAndUpdateResult(
+    rawHotel: IPersistedRawHotel | null,
+  ): void {
+    const exec = jest
+      .fn<Promise<IPersistedRawHotel | null>, []>()
+      .mockResolvedValue(rawHotel);
+
+    rawHotelModel.findOneAndUpdate.mockReturnValue({ exec });
   }
 
   it('creates many raw hotels in a single insertMany call', async () => {
@@ -203,6 +230,36 @@ describe('RawHotelsService', () => {
 
     expect(rawHotelModel.insertMany).not.toHaveBeenCalled();
     expect(result).toEqual([]);
+  });
+
+  it('claims pending raw hotels using Mongoose 9 returnDocument option', async () => {
+    const persistedRawHotel: IPersistedRawHotel = {
+      ...rawHotelFixture,
+      _id: new Types.ObjectId('662000000000000000000003'),
+    };
+
+    mockFindOneAndUpdateResult(persistedRawHotel);
+
+    const result = await service.claimPendingForRun('run-1', 1);
+
+    expect(rawHotelModel.findOneAndUpdate).toHaveBeenCalledWith(
+      {
+        'processing.status': HOTEL_PROCESSING_STATUS.PENDING,
+      },
+      expect.objectContaining({
+        $set: expect.objectContaining({
+          'processing.runId': 'run-1',
+          'processing.status': HOTEL_PROCESSING_STATUS.CLAIMED,
+        }),
+      }),
+      {
+        returnDocument: 'after',
+        sort: {
+          _id: 1,
+        },
+      },
+    );
+    expect(result).toEqual([persistedRawHotel]);
   });
 
   it('upserts many raw hotels by source file name and strict dedupe key', async () => {

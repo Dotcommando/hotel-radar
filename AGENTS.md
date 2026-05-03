@@ -31,6 +31,18 @@ These instructions apply to the whole repository and all applications inside it.
 - Do not add new comments unless explicitly requested.
 - Do not remove existing comments unless necessary.
 
+### Mongoose
+
+- This repository uses Mongoose 9.x.
+- Do not use deprecated `new: true` in `findOneAndUpdate()` or `findOneAndReplace()` options.
+- Use `returnDocument: "after"` instead. Example:
+
+```ts
+await model.findOneAndUpdate(filter, update, {
+  returnDocument: "after",
+});
+```
+
 ### Interfaces and Enums
 
 - Prefer `interface` over `type` whenever an interface can express the shape.

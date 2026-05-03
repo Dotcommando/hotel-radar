@@ -388,7 +388,7 @@ export class RawHotelsService {
             },
           },
           {
-            new: true,
+            returnDocument: 'after',
             sort: {
               _id: 1,
             },
