@@ -144,6 +144,9 @@ describe('RawHotelsService', () => {
         [Record<string, unknown>, Record<string, unknown>, IUpdateOneOptions?]
       >(),
     };
+    rawHotelModel.deleteMany.mockReturnValue({
+      exec: jest.fn<Promise<IDeleteManyResult>, []>().mockResolvedValue({}),
+    });
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -398,7 +401,18 @@ describe('RawHotelsService', () => {
       postcode: reversedCapacityRawHotel.postcode,
       rooms: 3,
     });
+    const obsoleteStrictHotelDedupeKey = makeStrictHotelDedupeKey({
+      beds: 3,
+      contacts: reversedCapacityRawHotel.contacts,
+      nameNormalized,
+      postcode: reversedCapacityRawHotel.postcode,
+      rooms: 10,
+    });
 
+    expect(rawHotelModel.deleteMany).toHaveBeenCalledWith({
+      'sourceFile.filename': reversedCapacityRawHotel.sourceFile.filename,
+      strictHotelDedupeKey: obsoleteStrictHotelDedupeKey,
+    });
     expect(rawHotelModel.updateOne).toHaveBeenCalledWith(
       {
         'sourceFile.filename': reversedCapacityRawHotel.sourceFile.filename,
@@ -455,19 +469,20 @@ describe('RawHotelsService', () => {
     expect(result).toBe(1);
   });
 
-  it('does not replace a matching raw hotel with address when the new record has no address', async () => {
+  it('updates capacity and keys on a matching raw hotel with address when the new record has no address', async () => {
     const existingRawHotel: IPersistedRawHotel = {
       ...rawHotelFixture,
       _id: new Types.ObjectId('662000000000000000000002'),
       address: 'Lofou 4716, Limassol',
-      beds: 6,
-      rooms: null,
+      beds: 5,
+      rooms: 10,
+      strictHotelDedupeKey: 'legacy-reversed-capacity-key',
     };
     const poorerRawHotel: ICreateRawHotel = {
       ...createRawHotelFixture,
       address: null,
-      beds: 1,
-      rooms: null,
+      beds: 5,
+      rooms: 10,
     };
 
     mockFindOneResult(existingRawHotel);
@@ -478,7 +493,30 @@ describe('RawHotelsService', () => {
         poorerRawHotel,
       ]);
 
-    expect(rawHotelModel.updateOne).not.toHaveBeenCalled();
+    const nameNormalized = normalizeHotelName(poorerRawHotel.name);
+    const strictHotelDedupeKey = makeStrictHotelDedupeKey({
+      beds: 10,
+      contacts: poorerRawHotel.contacts,
+      nameNormalized,
+      postcode: poorerRawHotel.postcode,
+      rooms: 5,
+    });
+
+    expect(rawHotelModel.updateOne).toHaveBeenCalledWith(
+      {
+        _id: existingRawHotel._id,
+      },
+      {
+        $set: expect.objectContaining({
+          beds: 10,
+          rooms: 5,
+          strictHotelDedupeKey,
+        }),
+      },
+    );
+    const updateFields = rawHotelModel.updateOne.mock.calls[0]?.[1].$set;
+
+    expect(updateFields).not.toHaveProperty('address');
     expect(result).toBe(1);
   });
 

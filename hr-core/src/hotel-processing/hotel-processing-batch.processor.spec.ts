@@ -320,6 +320,63 @@ describe('HotelProcessingBatchProcessor registry-to-candidates', () => {
     expect(hotelProcessingRunsService.complete).toHaveBeenCalledWith('run-1');
   });
 
+  it('updates already processed grouped siblings without counting them in current run stats', async () => {
+    const pendingEntry = buildRegistryEntry({
+      establishmentType: 'HOTEL APARTMENTS',
+      registryKey: 'nissiana-apartments',
+    });
+    const previouslyProcessedEntry = buildRegistryEntry({
+      establishmentType: 'HOTELS',
+      processing: {
+        canonicalHotelCandidateId: new Types.ObjectId(),
+        claimedAt: null,
+        error: null,
+        processedAt: new Date('2026-05-03T09:00:00.000Z'),
+        runId: 'previous-run',
+        status: HOTEL_PROCESSING_STATUS.PROCESSED,
+      },
+      registryKey: 'nissiana-hotel',
+    });
+    const candidateId = new Types.ObjectId();
+
+    hotelRegistryEntriesService.claimPendingForRun.mockResolvedValue([
+      pendingEntry,
+    ]);
+    hotelRegistryEntriesService.readSafeCanonicalCandidateGroup.mockResolvedValue(
+      [previouslyProcessedEntry, pendingEntry],
+    );
+    hotelRegistryEntriesService.hasCompatibleNumericSuffixGroup.mockResolvedValue(
+      false,
+    );
+    canonicalHotelCandidatesService.upsertFromRegistryEntries.mockResolvedValue(
+      buildCandidate(candidateId),
+    );
+    hotelRegistryEntriesService.countByProcessingStatus.mockResolvedValue(0);
+
+    await processor.processRegistryToCandidatesBatch({
+      batchNo: 1,
+      batchSize: 50,
+      runId: 'run-1',
+      stage: HOTEL_PROCESSING_STAGE.REGISTRY_TO_CANDIDATES,
+    });
+
+    expect(hotelRegistryEntriesService.markProcessed).toHaveBeenCalledWith(
+      previouslyProcessedEntry._id,
+      candidateId,
+      'run-1',
+    );
+    expect(hotelRegistryEntriesService.markProcessed).toHaveBeenCalledWith(
+      pendingEntry._id,
+      candidateId,
+      'run-1',
+    );
+    expect(hotelProcessingRunsService.incrementProcessed).toHaveBeenCalledWith(
+      'run-1',
+      1,
+      0,
+    );
+  });
+
   it('queues the next batch while pending registry entries remain', async () => {
     const entry = buildRegistryEntry({});
     const candidateId = new Types.ObjectId();
@@ -328,9 +385,9 @@ describe('HotelProcessingBatchProcessor registry-to-candidates', () => {
     hotelRegistryEntriesService.hasCompatibleNumericSuffixGroup.mockResolvedValue(
       false,
     );
-    hotelRegistryEntriesService.readSafeCanonicalCandidateGroup.mockResolvedValue([
-      entry,
-    ]);
+    hotelRegistryEntriesService.readSafeCanonicalCandidateGroup.mockResolvedValue(
+      [entry],
+    );
     canonicalHotelCandidatesService.upsertFromRegistryEntries.mockResolvedValue(
       buildCandidate(candidateId),
     );
@@ -367,9 +424,9 @@ describe('HotelProcessingBatchProcessor registry-to-candidates', () => {
     const candidateId = new Types.ObjectId();
 
     hotelRegistryEntriesService.claimPendingForRun.mockResolvedValue([entry]);
-    hotelRegistryEntriesService.readSafeCanonicalCandidateGroup.mockResolvedValue([
-      entry,
-    ]);
+    hotelRegistryEntriesService.readSafeCanonicalCandidateGroup.mockResolvedValue(
+      [entry],
+    );
     hotelRegistryEntriesService.hasCompatibleNumericSuffixGroup.mockResolvedValue(
       true,
     );

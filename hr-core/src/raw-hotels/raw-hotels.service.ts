@@ -56,6 +56,10 @@ export class RawHotelsService {
           this.hasAddress(addressMergeCandidate.address) &&
           !this.hasAddress(persistedRawHotel.address)
         ) {
+          await this.updateExistingRawHotelPreservingAddress(
+            addressMergeCandidate._id,
+            persistedRawHotel,
+          );
           continue;
         }
 
@@ -66,6 +70,7 @@ export class RawHotelsService {
         continue;
       }
 
+      await this.deleteObsoleteReversedCapacityDuplicates(persistedRawHotel);
       await this.upsertStrictRawHotel(persistedRawHotel);
     }
 
@@ -213,6 +218,73 @@ export class RawHotelsService {
         },
       )
       .exec();
+  }
+
+  private async updateExistingRawHotelPreservingAddress(
+    rawHotelId: Types.ObjectId,
+    persistedRawHotel: IPersistedRawHotelFields,
+  ): Promise<void> {
+    const { createdAt, ...rawHotelFields } = persistedRawHotel;
+    void createdAt;
+
+    await this.rawHotelModel
+      .updateOne(
+        {
+          _id: rawHotelId,
+        },
+        {
+          $set: this.removeAddressField(rawHotelFields),
+        },
+      )
+      .exec();
+  }
+
+  private async deleteObsoleteReversedCapacityDuplicates(
+    persistedRawHotel: IPersistedRawHotelFields,
+  ): Promise<void> {
+    const obsoleteStrictHotelDedupeKey =
+      this.buildObsoleteReversedCapacityStrictHotelDedupeKey(persistedRawHotel);
+
+    if (obsoleteStrictHotelDedupeKey === null) {
+      return;
+    }
+
+    await this.rawHotelModel
+      .deleteMany({
+        'sourceFile.filename': persistedRawHotel.sourceFile.filename,
+        strictHotelDedupeKey: obsoleteStrictHotelDedupeKey,
+      })
+      .exec();
+  }
+
+  private buildObsoleteReversedCapacityStrictHotelDedupeKey(
+    persistedRawHotel: IPersistedRawHotelFields,
+  ): string | null {
+    if (
+      persistedRawHotel.rooms === null ||
+      persistedRawHotel.beds === null ||
+      persistedRawHotel.rooms <= 0 ||
+      persistedRawHotel.beds <= 0 ||
+      persistedRawHotel.rooms >= persistedRawHotel.beds
+    ) {
+      return null;
+    }
+
+    const obsoleteStrictHotelDedupeKey = makeStrictHotelDedupeKey({
+      beds: persistedRawHotel.rooms,
+      contacts: persistedRawHotel.contacts,
+      nameNormalized: persistedRawHotel.nameNormalized,
+      postcode: persistedRawHotel.postcode,
+      rooms: persistedRawHotel.beds,
+    });
+
+    if (
+      obsoleteStrictHotelDedupeKey === persistedRawHotel.strictHotelDedupeKey
+    ) {
+      return null;
+    }
+
+    return obsoleteStrictHotelDedupeKey;
   }
 
   private async upsertStrictRawHotel(

@@ -28,6 +28,17 @@ interface IRawHotelDocumentLike extends IRawHotel {
   toObject: () => IRawHotel;
 }
 
+const SHARED_CHAIN_CONTACT_DOMAINS = new Set([
+  'atlanticahotels.com',
+  'kanikahotels.com',
+  'leonardo-hotels-cyprus.com',
+  'leonardo-hotels.com',
+  'leonardo-hotels.co',
+  'louis-hotels.com',
+  'louishotels.com',
+  'tsokkos.com',
+]);
+
 @Injectable()
 export class HotelRegistryEntriesService {
   constructor(
@@ -223,11 +234,20 @@ export class HotelRegistryEntriesService {
       })
       .exec();
 
-    if (entries.length < 2) {
+    const safeEntries = this.sortByName(entries).filter((candidate) =>
+      this.isSafeNumericSuffixPair(entry, candidate),
+    );
+
+    if (
+      safeEntries.length < 2 ||
+      !this.allEntryPairsMatch(safeEntries, (left, right) =>
+        this.isSafeNumericSuffixPair(left, right),
+      )
+    ) {
       return [entry];
     }
 
-    return entries;
+    return safeEntries;
   }
 
   async readSafeCanonicalCandidateGroup(
@@ -246,6 +266,7 @@ export class HotelRegistryEntriesService {
           $in: [
             HOTEL_PROCESSING_STATUS.PENDING,
             HOTEL_PROCESSING_STATUS.CLAIMED,
+            HOTEL_PROCESSING_STATUS.PROCESSED,
           ],
         },
         status: HOTEL_REGISTRY_ENTRY_STATUS.READY,
@@ -391,8 +412,6 @@ export class HotelRegistryEntriesService {
       !/^\d+[A-Z]?$/.test(entry.name.suffix) ||
       entry.name.baseName.trim().length === 0 ||
       entry.location.postcode === null ||
-      entry.location.locality === null ||
-      entry.operator === null ||
       this.isEmptyContacts(entry.contacts) ||
       entry.issues.length > 0
     ) {
@@ -400,25 +419,45 @@ export class HotelRegistryEntriesService {
     }
 
     return {
-      'contacts.domains': entry.contacts.domains,
-      'contacts.emails': entry.contacts.emails,
-      'contacts.phones': entry.contacts.phones,
-      'contacts.websites': entry.contacts.websites,
-      'location.locality': entry.location.locality,
-      'location.postcode': entry.location.postcode,
       'name.baseName': entry.name.baseName,
       'name.suffix': {
         $regex: '^\\d+[A-Z]?$',
       },
-      operator: entry.operator,
       'processing.status': {
         $in: [
           HOTEL_PROCESSING_STATUS.PENDING,
           HOTEL_PROCESSING_STATUS.CLAIMED,
+          HOTEL_PROCESSING_STATUS.PROCESSED,
         ],
       },
       status: HOTEL_REGISTRY_ENTRY_STATUS.READY,
     };
+  }
+
+  private isSafeNumericSuffixPair(
+    left: IHotelRegistryEntry,
+    right: IHotelRegistryEntry,
+  ): boolean {
+    return (
+      left.status === HOTEL_REGISTRY_ENTRY_STATUS.READY &&
+      right.status === HOTEL_REGISTRY_ENTRY_STATUS.READY &&
+      left.issues.length === 0 &&
+      right.issues.length === 0 &&
+      left.name.suffix !== null &&
+      right.name.suffix !== null &&
+      /^\d+[A-Z]?$/.test(left.name.suffix) &&
+      /^\d+[A-Z]?$/.test(right.name.suffix) &&
+      left.name.baseName === right.name.baseName &&
+      left.location.postcode !== null &&
+      right.location.postcode !== null &&
+      this.hasSameNonEmptyValue(
+        left.location.postcode,
+        right.location.postcode,
+      ) &&
+      this.hasCompatibleNumericSuffixLocation(left, right) &&
+      this.hasMeaningfulContactOverlap(left, right) &&
+      this.hasCompatibleOperator(left, right)
+    );
   }
 
   private isEmptyContacts(contacts: IHotelContacts): boolean {
@@ -433,10 +472,7 @@ export class HotelRegistryEntriesService {
   private isSafeSameNameMultiTypeGroup(
     entries: IHotelRegistryEntry[],
   ): boolean {
-    if (
-      entries.length < 2
-        || !this.hasOneNormalizedName(entries)
-    ) {
+    if (entries.length < 2 || !this.hasOneNormalizedName(entries)) {
       return false;
     }
 
@@ -445,19 +481,17 @@ export class HotelRegistryEntriesService {
     );
 
     return (
-      establishmentTypes.size > 1
-        && this.allEntriesHaveStrongContactOverlap(entries)
-        && this.allEntriesHaveCompatibleLocation(entries)
+      establishmentTypes.size > 1 &&
+      this.allEntriesHaveMeaningfulContactOverlap(entries) &&
+      this.allEntriesHaveStrictCompatibleLocation(entries) &&
+      this.allEntriesHaveCompatibleOperator(entries)
     );
   }
 
   private isSafeSameNameSameTypeCollapseGroup(
     entries: IHotelRegistryEntry[],
   ): boolean {
-    if (
-      entries.length < 2
-        || !this.hasOneNormalizedName(entries)
-    ) {
+    if (entries.length < 2 || !this.hasOneNormalizedName(entries)) {
       return false;
     }
 
@@ -466,10 +500,11 @@ export class HotelRegistryEntriesService {
     );
 
     return (
-      establishmentTypes.size === 1
-        && this.allEntriesHaveStrongContactOverlap(entries)
-        && this.allEntriesHaveCompatibleLocation(entries)
-        && this.hasCompatibleCapacityForCollapse(entries)
+      establishmentTypes.size === 1 &&
+      this.allEntriesHaveMeaningfulContactOverlap(entries) &&
+      this.allEntriesHaveStrictCompatibleLocation(entries) &&
+      this.allEntriesHaveCompatibleOperator(entries) &&
+      this.hasCompatibleCapacityForCollapse(entries)
     );
   }
 
@@ -479,60 +514,70 @@ export class HotelRegistryEntriesService {
     return entries.every(({ name }) => name.normalized === firstName);
   }
 
-  private allEntriesHaveStrongContactOverlap(
+  private allEntriesHaveMeaningfulContactOverlap(
     entries: IHotelRegistryEntry[],
   ): boolean {
-    const firstEntry = entries[0];
-
-    return entries.every((entry) =>
-      this.hasStrongContactOverlap(firstEntry, entry),
+    return this.allEntryPairsMatch(entries, (left, right) =>
+      this.hasMeaningfulContactOverlap(left, right),
     );
   }
 
-  private hasStrongContactOverlap(
+  private hasMeaningfulContactOverlap(
     left: IHotelRegistryEntry,
     right: IHotelRegistryEntry,
   ): boolean {
     return (
-      this.hasArrayOverlap(left.contacts.phones, right.contacts.phones)
-        || this.hasArrayOverlap(left.contacts.emails, right.contacts.emails)
-        || this.hasArrayOverlap(left.contacts.domains, right.contacts.domains)
+      this.hasArrayOverlap(left.contacts.phones, right.contacts.phones) ||
+      this.hasArrayOverlap(left.contacts.emails, right.contacts.emails) ||
+      this.hasNonSharedDomainOverlap(
+        left.contacts.domains,
+        right.contacts.domains,
+      ) ||
+      this.hasNonSharedWebsiteOverlap(
+        left.contacts.websites,
+        right.contacts.websites,
+      )
     );
   }
 
-  private allEntriesHaveCompatibleLocation(
+  private allEntriesHaveStrictCompatibleLocation(
     entries: IHotelRegistryEntry[],
   ): boolean {
-    const firstEntry = entries[0];
-
-    return entries.every((entry) =>
-      this.hasCompatibleLocation(firstEntry, entry),
+    return this.allEntryPairsMatch(entries, (left, right) =>
+      this.hasStrictCompatibleLocation(left, right),
     );
   }
 
-  private hasCompatibleLocation(
+  private hasStrictCompatibleLocation(
     left: IHotelRegistryEntry,
     right: IHotelRegistryEntry,
   ): boolean {
+    if (
+      this.hasConflictingValue(
+        left.location.postcode,
+        right.location.postcode,
+      ) ||
+      this.hasConflictingLocality(
+        left.location.locality,
+        right.location.locality,
+      )
+    ) {
+      return false;
+    }
+
+    if (left.location.address !== null && right.location.address !== null) {
+      return this.hasCompatibleAddress(
+        left.location.address,
+        right.location.address,
+      );
+    }
+
     return (
       this.hasSameNonEmptyValue(
         left.location.postcode,
         right.location.postcode,
-      )
-        || this.hasCompatibleAddress(
-          left.location.address,
-          right.location.address,
-        )
-        || (this.hasSameNonEmptyValue(
-          left.location.locality,
-          right.location.locality,
-        )
-          && this.hasSameNonEmptyValue(
-            left.location.district,
-            right.location.district,
-          )
-          && this.buildContactsKey(left.contacts) ===
-            this.buildContactsKey(right.contacts))
+      ) &&
+      this.hasSameNonEmptyValue(left.location.locality, right.location.locality)
     );
   }
 
@@ -567,9 +612,67 @@ export class HotelRegistryEntriesService {
     right: string | null,
   ): boolean {
     return (
-      left !== null
-        && right !== null
-        && normalizeRegistryText(left) === normalizeRegistryText(right)
+      left !== null &&
+      right !== null &&
+      normalizeRegistryText(left) === normalizeRegistryText(right)
+    );
+  }
+
+  private hasConflictingValue(
+    left: string | null,
+    right: string | null,
+  ): boolean {
+    return (
+      left !== null &&
+      right !== null &&
+      normalizeRegistryText(left) !== normalizeRegistryText(right)
+    );
+  }
+
+  private hasConflictingLocality(
+    left: string | null,
+    right: string | null,
+  ): boolean {
+    if (left === null || right === null) {
+      return false;
+    }
+
+    return !this.hasCompatibleLocationText(left, right);
+  }
+
+  private hasCompatibleNumericSuffixLocation(
+    left: IHotelRegistryEntry,
+    right: IHotelRegistryEntry,
+  ): boolean {
+    if (
+      left.location.locality !== null &&
+      right.location.locality !== null &&
+      this.hasCompatibleLocationText(
+        left.location.locality,
+        right.location.locality,
+      )
+    ) {
+      return true;
+    }
+
+    if (left.location.address !== null && right.location.address !== null) {
+      return this.hasCompatibleAddress(
+        left.location.address,
+        right.location.address,
+      );
+    }
+
+    return false;
+  }
+
+  private hasCompatibleLocationText(left: string, right: string): boolean {
+    const normalizedLeft = this.normalizeLocationTextForCompare(left);
+    const normalizedRight = this.normalizeLocationTextForCompare(right);
+
+    return (
+      normalizedLeft === normalizedRight ||
+      normalizedLeft.includes(normalizedRight) ||
+      normalizedRight.includes(normalizedLeft)
     );
   }
 
@@ -577,20 +680,18 @@ export class HotelRegistryEntriesService {
     left: string | null,
     right: string | null,
   ): boolean {
-    const normalizedLeft = normalizeRegistryText(left);
-    const normalizedRight = normalizeRegistryText(right);
+    const normalizedLeft = this.normalizeAddressForCompare(left);
+    const normalizedRight = this.normalizeAddressForCompare(right);
 
-    if (
-      normalizedLeft.length === 0
-        || normalizedRight.length === 0
-    ) {
+    if (normalizedLeft.length === 0 || normalizedRight.length === 0) {
       return false;
     }
 
     return (
-      normalizedLeft === normalizedRight
-        || normalizedLeft.includes(normalizedRight)
-        || normalizedRight.includes(normalizedLeft)
+      normalizedLeft === normalizedRight ||
+      normalizedLeft.includes(normalizedRight) ||
+      normalizedRight.includes(normalizedLeft) ||
+      this.hasCompatibleSameNumberAddress(normalizedLeft, normalizedRight)
     );
   }
 
@@ -607,6 +708,210 @@ export class HotelRegistryEntriesService {
     const rightValues = new Set(right);
 
     return left.some((value) => rightValues.has(value));
+  }
+
+  private hasNonSharedDomainOverlap(left: string[], right: string[]): boolean {
+    const rightDomains = new Set(
+      right.map((value) => this.normalizeContactDomain(value)),
+    );
+
+    return left
+      .map((value) => this.normalizeContactDomain(value))
+      .some(
+        (domain) =>
+          domain.length > 0 &&
+          rightDomains.has(domain) &&
+          !SHARED_CHAIN_CONTACT_DOMAINS.has(domain),
+      );
+  }
+
+  private hasNonSharedWebsiteOverlap(left: string[], right: string[]): boolean {
+    const rightHosts = new Set(
+      right.map((value) => this.normalizeWebsiteHost(value)),
+    );
+
+    return left
+      .map((value) => this.normalizeWebsiteHost(value))
+      .some(
+        (host) =>
+          host.length > 0 &&
+          rightHosts.has(host) &&
+          !SHARED_CHAIN_CONTACT_DOMAINS.has(host),
+      );
+  }
+
+  private allEntriesHaveCompatibleOperator(
+    entries: IHotelRegistryEntry[],
+  ): boolean {
+    return this.allEntryPairsMatch(entries, (left, right) =>
+      this.hasCompatibleOperator(left, right),
+    );
+  }
+
+  private hasCompatibleOperator(
+    left: IHotelRegistryEntry,
+    right: IHotelRegistryEntry,
+  ): boolean {
+    if (
+      left.operator === null ||
+      right.operator === null ||
+      this.hasSameNonEmptyValue(left.operator, right.operator)
+    ) {
+      return true;
+    }
+
+    return (
+      this.hasArrayOverlap(left.contacts.phones, right.contacts.phones) ||
+      this.hasArrayOverlap(left.contacts.emails, right.contacts.emails)
+    );
+  }
+
+  private normalizeAddressForCompare(value: string | null): string {
+    return normalizeRegistryText(value)
+      .replace(/\bSTR\b/gu, 'STREET')
+      .replace(/\bST\b/gu, 'STREET')
+      .replace(/\bAVE\b/gu, 'AVENUE')
+      .replace(/\bAV\b/gu, 'AVENUE');
+  }
+
+  private normalizeLocationTextForCompare(value: string): string {
+    return normalizeRegistryText(value)
+      .replace(/\bK\b/gu, 'KATO')
+      .replace(/\bP\b/gu, 'PANO');
+  }
+
+  private normalizeContactDomain(value: string): string {
+    return value
+      .trim()
+      .toLowerCase()
+      .replace(/^www\./u, '');
+  }
+
+  private normalizeWebsiteHost(value: string): string {
+    try {
+      const url = new URL(value);
+
+      return this.normalizeContactDomain(url.hostname);
+    } catch {
+      return this.normalizeContactDomain(
+        value.replace(/^https?:\/\//u, '').split('/')[0],
+      );
+    }
+  }
+
+  private hasCompatibleSameNumberAddress(left: string, right: string): boolean {
+    const leftNumber = this.readLeadingAddressNumber(left);
+    const rightNumber = this.readLeadingAddressNumber(right);
+
+    if (
+      leftNumber === null ||
+      rightNumber === null ||
+      leftNumber !== rightNumber
+    ) {
+      return false;
+    }
+
+    const maxLength = Math.max(left.length, right.length);
+
+    if (maxLength === 0) {
+      return false;
+    }
+
+    return this.calculateLevenshteinDistance(left, right) / maxLength <= 0.25;
+  }
+
+  private readLeadingAddressNumber(value: string): string | null {
+    return value.match(/^\d+[A-Z]?/u)?.[0] ?? null;
+  }
+
+  private calculateLevenshteinDistance(left: string, right: string): number {
+    const previousRow = Array.from(
+      { length: right.length + 1 },
+      (_value, index) => index,
+    );
+
+    for (let leftIndex = 0; leftIndex < left.length; leftIndex += 1) {
+      let previousDiagonal = previousRow[0];
+
+      previousRow[0] = leftIndex + 1;
+
+      for (let rightIndex = 0; rightIndex < right.length; rightIndex += 1) {
+        const previousAbove = previousRow[rightIndex + 1];
+        const substitutionCost = left[leftIndex] === right[rightIndex] ? 0 : 1;
+
+        previousRow[rightIndex + 1] = Math.min(
+          previousRow[rightIndex + 1] + 1,
+          previousRow[rightIndex] + 1,
+          previousDiagonal + substitutionCost,
+        );
+        previousDiagonal = previousAbove;
+      }
+    }
+
+    return previousRow[right.length];
+  }
+
+  private allEntryPairsMatch(
+    entries: IHotelRegistryEntry[],
+    predicate: (
+      left: IHotelRegistryEntry,
+      right: IHotelRegistryEntry,
+    ) => boolean,
+  ): boolean {
+    for (let leftIndex = 0; leftIndex < entries.length; leftIndex += 1) {
+      for (
+        let rightIndex = leftIndex + 1;
+        rightIndex < entries.length;
+        rightIndex += 1
+      ) {
+        if (!predicate(entries[leftIndex], entries[rightIndex])) {
+          return false;
+        }
+      }
+    }
+
+    return true;
+  }
+
+  private sortByName(entries: IHotelRegistryEntry[]): IHotelRegistryEntry[] {
+    return entries.slice().sort((left, right) => {
+      const baseNameCompare = left.name.baseName.localeCompare(
+        right.name.baseName,
+      );
+
+      if (baseNameCompare !== 0) {
+        return baseNameCompare;
+      }
+
+      const leftSuffixNumber = this.readNumericSuffixNumber(left.name.suffix);
+      const rightSuffixNumber = this.readNumericSuffixNumber(right.name.suffix);
+
+      if (
+        leftSuffixNumber !== null &&
+        rightSuffixNumber !== null &&
+        leftSuffixNumber !== rightSuffixNumber
+      ) {
+        return leftSuffixNumber - rightSuffixNumber;
+      }
+
+      const normalizedNameCompare = left.name.normalized.localeCompare(
+        right.name.normalized,
+      );
+
+      if (normalizedNameCompare !== 0) {
+        return normalizedNameCompare;
+      }
+
+      return left.registryKey.localeCompare(right.registryKey);
+    });
+  }
+
+  private readNumericSuffixNumber(value: string | null): number | null {
+    if (value === null || !/^\d+[A-Z]?$/.test(value)) {
+      return null;
+    }
+
+    return Number.parseInt(value, 10);
   }
 
   private buildRegistryEntryFields(
@@ -710,9 +1015,9 @@ export class HotelRegistryEntriesService {
     }
 
     if (
-      capacity.rooms !== null
-        && capacity.beds !== null
-        && capacity.rooms > capacity.beds
+      capacity.rooms !== null &&
+      capacity.beds !== null &&
+      capacity.rooms > capacity.beds
     ) {
       issues.push('invalid_capacity');
     }
@@ -725,12 +1030,10 @@ export class HotelRegistryEntriesService {
     existingCapacity: IHotelCapacity | null,
   ): string[] {
     if (
-      existingEntry === null
-        || !existingEntry.issues.includes('invalid_capacity')
-        || existingCapacity === null
-        || this.buildCapacityIssues(existingCapacity).includes(
-          'invalid_capacity',
-        )
+      existingEntry === null ||
+      !existingEntry.issues.includes('invalid_capacity') ||
+      existingCapacity === null ||
+      this.buildCapacityIssues(existingCapacity).includes('invalid_capacity')
     ) {
       return existingEntry?.issues ?? [];
     }

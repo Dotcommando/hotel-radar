@@ -154,7 +154,12 @@ export class HotelProcessingBatchProcessor {
             data.runId,
           );
           processedRegistryEntryIds.add(groupEntryId);
-          processed += 1;
+
+          if (
+            groupEntry.processing.status !== HOTEL_PROCESSING_STATUS.PROCESSED
+          ) {
+            processed += 1;
+          }
         }
       } catch (error) {
         const message =

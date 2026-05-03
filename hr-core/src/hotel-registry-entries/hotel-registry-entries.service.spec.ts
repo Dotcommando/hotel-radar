@@ -23,6 +23,15 @@ interface IFindOneAndUpdateOptions {
 }
 
 interface IHotelRegistryEntryModelMock {
+  find: jest.Mock<
+    {
+      sort: jest.Mock<
+        IExecable<IHotelRegistryEntry[]>,
+        [Record<string, 1 | -1>]
+      >;
+    },
+    [Record<string, unknown>]
+  >;
   findOne: jest.Mock<
     IExecable<IHotelRegistryEntry | null>,
     [Record<string, unknown>]
@@ -83,6 +92,15 @@ describe('HotelRegistryEntriesService', () => {
 
   beforeEach(async () => {
     hotelRegistryEntryModel = {
+      find: jest.fn<
+        {
+          sort: jest.Mock<
+            IExecable<IHotelRegistryEntry[]>,
+            [Record<string, 1 | -1>]
+          >;
+        },
+        [Record<string, unknown>]
+      >(),
       findOne: jest.fn<
         IExecable<IHotelRegistryEntry | null>,
         [Record<string, unknown>]
@@ -146,6 +164,18 @@ describe('HotelRegistryEntriesService', () => {
       exec: jest
         .fn<Promise<IHotelRegistryEntry | null>, []>()
         .mockResolvedValue(registryEntry),
+    });
+  }
+
+  function mockFindResult(registryEntries: IHotelRegistryEntry[]): void {
+    hotelRegistryEntryModel.find.mockReturnValue({
+      sort: jest
+        .fn<IExecable<IHotelRegistryEntry[]>, [Record<string, 1 | -1>]>()
+        .mockReturnValue({
+          exec: jest
+            .fn<Promise<IHotelRegistryEntry[]>, []>()
+            .mockResolvedValue(registryEntries),
+        }),
     });
   }
 
@@ -294,6 +324,170 @@ describe('HotelRegistryEntriesService', () => {
         upsert: true,
       },
     );
+  });
+
+  it('finds same-name multi-type groups across pending, claimed, and processed entries', async () => {
+    const hotelEntry = buildRegistryEntry({
+      establishmentType: 'HOTELS',
+      name: {
+        baseName: 'NISSIANA',
+        normalized: 'NISSIANA',
+        original: 'NISSIANA',
+        suffix: null,
+      },
+      processing: {
+        canonicalHotelCandidateId: new Types.ObjectId(),
+        claimedAt: null,
+        error: null,
+        processedAt: new Date('2026-05-03T09:00:00.000Z'),
+        runId: 'previous-run',
+        status: HOTEL_PROCESSING_STATUS.PROCESSED,
+      },
+      registryKey: 'nissiana-hotel',
+    });
+    const apartmentsEntry = buildRegistryEntry({
+      establishmentType: 'HOTEL APARTMENTS',
+      name: {
+        baseName: 'NISSIANA',
+        normalized: 'NISSIANA',
+        original: 'NISSIANA',
+        suffix: null,
+      },
+      registryKey: 'nissiana-apartments',
+    });
+
+    mockFindResult([hotelEntry]);
+    mockFindResult([hotelEntry, apartmentsEntry]);
+
+    const result =
+      await service.readSafeCanonicalCandidateGroup(apartmentsEntry);
+
+    expect(result).toEqual([hotelEntry, apartmentsEntry]);
+    expect(hotelRegistryEntryModel.find).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        'name.normalized': 'NISSIANA',
+        'processing.status': {
+          $in: [
+            HOTEL_PROCESSING_STATUS.PENDING,
+            HOTEL_PROCESSING_STATUS.CLAIMED,
+            HOTEL_PROCESSING_STATUS.PROCESSED,
+          ],
+        },
+        status: HOTEL_REGISTRY_ENTRY_STATUS.READY,
+      }),
+    );
+  });
+
+  it('finds deterministic numeric suffix groups and excludes standalone base entries', async () => {
+    const standaloneEntry = buildRegistryEntry({
+      contacts: {
+        domains: ['thalassines.com'],
+        emails: ['reservations@thalassines.com'],
+        phones: ['+35723744866'],
+        websites: ['https://www.thalassines.com/'],
+      },
+      name: {
+        baseName: 'THALASSINES',
+        normalized: 'THALASSINES',
+        original: 'THALASSINES',
+        suffix: null,
+      },
+      operator: 'Mr Andreas Limbourides',
+      registryKey: 'thalassines-base',
+    });
+    const secondEntry = buildRegistryEntry({
+      name: {
+        baseName: 'THALASSINES',
+        normalized: 'THALASSINES 2',
+        original: 'THALASSINES 2',
+        suffix: '2',
+      },
+      operator: 'Limbus Creations Ltd',
+      registryKey: 'thalassines-2',
+    });
+    const tenthEntry = buildRegistryEntry({
+      name: {
+        baseName: 'THALASSINES',
+        normalized: 'THALASSINES 10',
+        original: 'THALASSINES 10',
+        suffix: '10',
+      },
+      operator: 'Limbus Creations Ltd',
+      registryKey: 'thalassines-10',
+    });
+
+    mockFindResult([standaloneEntry, tenthEntry, secondEntry]);
+
+    const result = await service.readSafeCanonicalCandidateGroup(tenthEntry);
+
+    expect(result.map(({ name }) => name.original)).toEqual([
+      'THALASSINES 2',
+      'THALASSINES 10',
+    ]);
+    expect(hotelRegistryEntryModel.find).toHaveBeenCalledWith(
+      expect.objectContaining({
+        'name.baseName': 'THALASSINES',
+        'name.suffix': {
+          $regex: '^\\d+[A-Z]?$',
+        },
+      }),
+    );
+  });
+
+  it('finds PALATAKIA numeric suffix groups when suffixes are present', async () => {
+    const secondEntry = buildRegistryEntry({
+      contacts: {
+        domains: ['palatakia.com'],
+        emails: ['info@palatakia.com'],
+        phones: ['+35799934807'],
+        websites: ['https://www.palatakia.com/'],
+      },
+      location: {
+        address: null,
+        district: 'LARNACA',
+        locality: 'Kato Drys',
+        postcode: '7714',
+      },
+      name: {
+        baseName: 'PALATAKIA',
+        normalized: 'PALATAKIA 2',
+        original: 'PALATAKIA 2',
+        suffix: '2',
+      },
+      operator: 'Corpaz Ltd',
+      registryKey: 'palatakia-2',
+    });
+    const thirdEntry = buildRegistryEntry({
+      contacts: {
+        domains: ['palatakia.com'],
+        emails: ['info@palatakia.com'],
+        phones: ['+35799934807'],
+        websites: ['https://www.palatakia.com/'],
+      },
+      location: {
+        address: null,
+        district: 'LARNACA',
+        locality: 'K. Drys, Larnaca',
+        postcode: '7714',
+      },
+      name: {
+        baseName: 'PALATAKIA',
+        normalized: 'PALATAKIA 3',
+        original: 'PALATAKIA 3',
+        suffix: '3',
+      },
+      operator: 'Corpaz Ltd',
+      registryKey: 'palatakia-3',
+    });
+
+    mockFindResult([thirdEntry, secondEntry]);
+
+    const result = await service.readSafeCanonicalCandidateGroup(secondEntry);
+
+    expect(result.map(({ name }) => name.original)).toEqual([
+      'PALATAKIA 2',
+      'PALATAKIA 3',
+    ]);
   });
 
   it('keeps raw hotel fields when input is a Mongoose document', async () => {

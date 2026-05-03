@@ -53,6 +53,86 @@ function buildRegistryEntry(
   };
 }
 
+interface IExpectedGroupComponent {
+  establishmentType: string | null;
+  name: string;
+}
+
+interface IStableGroupCase {
+  baseName: string;
+  components: IExpectedGroupComponent[];
+  rule: 'numeric_suffix_group' | 'same_name_multi_type_same_contacts';
+}
+
+function buildStableGroupEntries(
+  groupCase: IStableGroupCase,
+): IHotelRegistryEntry[] {
+  return groupCase.components.map((component, index) => {
+    const suffix =
+      groupCase.rule === 'numeric_suffix_group'
+        ? (component.name.match(/(?:NO\.\s*)?(\d+[A-Z]?)$/u)?.[1] ?? null)
+        : null;
+
+    return buildRegistryEntry({
+      capacity: {
+        beds: (index + 1) * 2,
+        rooms: index + 1,
+      },
+      contacts: {
+        domains: [
+          `${groupCase.baseName.toLowerCase().replace(/\s+/g, '')}.test`,
+        ],
+        emails: [
+          `${groupCase.baseName.toLowerCase().replace(/\s+/g, '')}@example.test`,
+        ],
+        phones: ['+35722000000'],
+        websites: [
+          `https://www.${groupCase.baseName
+            .toLowerCase()
+            .replace(/\s+/g, '')}.test/`,
+        ],
+      },
+      establishmentType: component.establishmentType,
+      location: {
+        address:
+          groupCase.rule === 'numeric_suffix_group'
+            ? null
+            : `1 ${groupCase.baseName} Street`,
+        district: 'TEST DISTRICT',
+        locality: `${groupCase.baseName} Locality`,
+        postcode: '9000',
+      },
+      name: {
+        baseName: groupCase.baseName,
+        normalized:
+          groupCase.rule === 'numeric_suffix_group'
+            ? component.name
+            : groupCase.baseName,
+        original: component.name,
+        suffix,
+      },
+      operator: `${groupCase.baseName} Ltd`,
+      registryKey: `${groupCase.baseName}-${component.name}-${component.establishmentType ?? 'null'}`,
+    });
+  });
+}
+
+function sortExpectedComponents(
+  components: IExpectedGroupComponent[],
+): IExpectedGroupComponent[] {
+  return components.slice().sort((left, right) => {
+    const nameCompare = left.name.localeCompare(right.name);
+
+    if (nameCompare !== 0) {
+      return nameCompare;
+    }
+
+    return (left.establishmentType ?? '').localeCompare(
+      right.establishmentType ?? '',
+    );
+  });
+}
+
 describe('CanonicalHotelCandidateBuilderService', () => {
   let service: CanonicalHotelCandidateBuilderService;
 
@@ -138,10 +218,7 @@ describe('CanonicalHotelCandidateBuilderService', () => {
       registryKey: 'thalassines-11',
     });
 
-    const result = service.buildFromRegistryEntries([
-      secondEntry,
-      firstEntry,
-    ]);
+    const result = service.buildFromRegistryEntries([secondEntry, firstEntry]);
 
     expect(result.candidateKey).toBe(
       'ccv1|group|numeric_suffix|THALASSINES|5391|SOTERA|Limbus Creations Ltd|thalassines.com|admin@thalassines.com|+35723744866|https://www.thalassines.com/',
@@ -167,6 +244,393 @@ describe('CanonicalHotelCandidateBuilderService', () => {
         rooms: 1,
       },
     ]);
+  });
+
+  it('builds numeric suffix groups deterministically with natural component ordering', () => {
+    const entries = [
+      buildRegistryEntry({
+        name: {
+          baseName: 'THALASSINES',
+          normalized: 'THALASSINES 10',
+          original: 'THALASSINES 10',
+          suffix: '10',
+        },
+        registryKey: 'thalassines-10',
+      }),
+      buildRegistryEntry({
+        location: {
+          address: '77 Agias Theklas',
+          district: 'SOTERA',
+          locality: 'Sotera',
+          postcode: '5391',
+        },
+        name: {
+          baseName: 'THALASSINES',
+          normalized: 'THALASSINES 2',
+          original: 'THALASSINES 2',
+          suffix: '2',
+        },
+        registryKey: 'thalassines-2',
+      }),
+      buildRegistryEntry({
+        name: {
+          baseName: 'THALASSINES',
+          normalized: 'THALASSINES 7',
+          original: 'THALASSINES 7',
+          suffix: '7',
+        },
+        registryKey: 'thalassines-7',
+      }),
+    ];
+
+    const forwardResult = service.buildFromRegistryEntries(entries);
+    const reverseResult = service.buildFromRegistryEntries(
+      entries.toReversed(),
+    );
+
+    expect(forwardResult.candidateKey).toBe(reverseResult.candidateKey);
+    expect(forwardResult.components).toEqual(reverseResult.components);
+    expect(forwardResult.components.map(({ name }) => name)).toEqual([
+      'THALASSINES 2',
+      'THALASSINES 7',
+      'THALASSINES 10',
+    ]);
+    expect(forwardResult.location.address).toBe('77 Agias Theklas');
+  });
+
+  it('does not include standalone base entries in numeric suffix groups', () => {
+    const numberedEntry = buildRegistryEntry({
+      name: {
+        baseName: 'THALASSINES',
+        normalized: 'THALASSINES 10',
+        original: 'THALASSINES 10',
+        suffix: '10',
+      },
+      registryKey: 'thalassines-10',
+    });
+    const standaloneEntry = buildRegistryEntry({
+      contacts: {
+        domains: ['thalassines.com'],
+        emails: ['reservations@thalassines.com'],
+        phones: ['+35723744866'],
+        websites: ['https://www.thalassines.com/'],
+      },
+      name: {
+        baseName: 'THALASSINES',
+        normalized: 'THALASSINES',
+        original: 'THALASSINES',
+        suffix: null,
+      },
+      operator: 'Mr Andreas Limbourides',
+      registryKey: 'thalassines-base',
+    });
+
+    const result = service.buildFromRegistryEntries([
+      numberedEntry,
+      standaloneEntry,
+    ]);
+
+    expect(result.kind).toBe(CANONICAL_HOTEL_KIND.SINGLE_PROPERTY);
+    expect(result.candidateKey).toBe('ccv1|single|thalassines-10');
+  });
+
+  it('groups PALATAKIA numeric suffix entries when Stage 1 preserves suffixes', () => {
+    const secondEntry = buildRegistryEntry({
+      contacts: {
+        domains: ['palatakia.com'],
+        emails: ['info@palatakia.com'],
+        phones: ['+35799934807'],
+        websites: ['https://www.palatakia.com/'],
+      },
+      location: {
+        address: null,
+        district: 'LARNACA',
+        locality: 'Kato Drys',
+        postcode: '7714',
+      },
+      name: {
+        baseName: 'PALATAKIA',
+        normalized: 'PALATAKIA 2',
+        original: 'PALATAKIA 2',
+        suffix: '2',
+      },
+      operator: 'Corpaz Ltd',
+      registryKey: 'palatakia-2',
+    });
+    const thirdEntry = buildRegistryEntry({
+      contacts: {
+        domains: ['palatakia.com'],
+        emails: ['info@palatakia.com'],
+        phones: ['+35799934807'],
+        websites: ['https://www.palatakia.com/'],
+      },
+      location: {
+        address: null,
+        district: 'LARNACA',
+        locality: 'K. Drys, Larnaca',
+        postcode: '7714',
+      },
+      name: {
+        baseName: 'PALATAKIA',
+        normalized: 'PALATAKIA 3',
+        original: 'PALATAKIA 3',
+        suffix: '3',
+      },
+      operator: 'Corpaz Ltd',
+      registryKey: 'palatakia-3',
+    });
+
+    const result = service.buildFromRegistryEntries([thirdEntry, secondEntry]);
+
+    expect(result.kind).toBe(CANONICAL_HOTEL_KIND.PROPERTY_COMPLEX);
+    expect(result.build.rule).toBe('numeric_suffix_group');
+    expect(result.components.map(({ name }) => name)).toEqual([
+      'PALATAKIA 2',
+      'PALATAKIA 3',
+    ]);
+  });
+
+  it('builds the stable Stage 2 grouped candidates with exact components', () => {
+    const groupCases: IStableGroupCase[] = [
+      {
+        baseName: 'NISSIANA',
+        components: [
+          {
+            establishmentType: 'HOTELS',
+            name: 'NISSIANA',
+          },
+          {
+            establishmentType: 'HOTEL APARTMENTS',
+            name: 'NISSIANA',
+          },
+        ],
+        rule: 'same_name_multi_type_same_contacts',
+      },
+      {
+        baseName: 'TSOKKOS HOLIDAY',
+        components: [
+          {
+            establishmentType: 'TOURIST APARTMENTS',
+            name: 'TSOKKOS HOLIDAY NO. 1',
+          },
+          {
+            establishmentType: 'TOURIST APARTMENTS',
+            name: 'TSOKKOS HOLIDAY NO. 2',
+          },
+        ],
+        rule: 'numeric_suffix_group',
+      },
+      {
+        baseName: 'CALLISTO ANNEX',
+        components: [
+          {
+            establishmentType: 'TOURIST APARTMENTS',
+            name: 'CALLISTO ANNEX 1',
+          },
+          {
+            establishmentType: 'TOURIST APARTMENTS',
+            name: 'CALLISTO ANNEX 2',
+          },
+        ],
+        rule: 'numeric_suffix_group',
+      },
+      {
+        baseName: 'THALASSINES',
+        components: [
+          {
+            establishmentType: 'TOURIST VILLAS',
+            name: 'THALASSINES 2',
+          },
+          {
+            establishmentType: 'TOURIST VILLAS',
+            name: 'THALASSINES 7',
+          },
+          {
+            establishmentType: 'TOURIST VILLAS',
+            name: 'THALASSINES 8',
+          },
+          {
+            establishmentType: 'TOURIST VILLAS',
+            name: 'THALASSINES 9',
+          },
+          {
+            establishmentType: 'TOURIST VILLAS',
+            name: 'THALASSINES 10',
+          },
+          {
+            establishmentType: 'TOURIST VILLAS',
+            name: 'THALASSINES 11',
+          },
+          {
+            establishmentType: 'TOURIST VILLAS',
+            name: 'THALASSINES 12',
+          },
+          {
+            establishmentType: 'TOURIST VILLAS',
+            name: 'THALASSINES 13',
+          },
+          {
+            establishmentType: 'TOURIST VILLAS',
+            name: 'THALASSINES 14',
+          },
+          {
+            establishmentType: 'TOURIST VILLAS',
+            name: 'THALASSINES 15',
+          },
+          {
+            establishmentType: 'TOURIST VILLAS',
+            name: 'THALASSINES 16',
+          },
+          {
+            establishmentType: 'TOURIST VILLAS',
+            name: 'THALASSINES 17',
+          },
+        ],
+        rule: 'numeric_suffix_group',
+      },
+      {
+        baseName: 'AKTI BEACH',
+        components: [
+          {
+            establishmentType: 'HOTELS',
+            name: 'AKTI BEACH',
+          },
+          {
+            establishmentType: 'TOURIST VILLAGES',
+            name: 'AKTI BEACH',
+          },
+        ],
+        rule: 'same_name_multi_type_same_contacts',
+      },
+      {
+        baseName: 'MAYFAIR',
+        components: [
+          {
+            establishmentType: 'HOTELS',
+            name: 'MAYFAIR',
+          },
+          {
+            establishmentType: 'HOTEL APARTMENTS',
+            name: 'MAYFAIR',
+          },
+        ],
+        rule: 'same_name_multi_type_same_contacts',
+      },
+      {
+        baseName: 'PAPHIESSA',
+        components: [
+          {
+            establishmentType: 'HOTELS',
+            name: 'PAPHIESSA',
+          },
+          {
+            establishmentType: 'HOTEL APARTMENTS',
+            name: 'PAPHIESSA',
+          },
+        ],
+        rule: 'same_name_multi_type_same_contacts',
+      },
+      {
+        baseName: 'NATURA BEACH',
+        components: [
+          {
+            establishmentType: 'HOTELS',
+            name: 'NATURA BEACH',
+          },
+          {
+            establishmentType: 'TOURIST VILLAS',
+            name: 'NATURA BEACH',
+          },
+        ],
+        rule: 'same_name_multi_type_same_contacts',
+      },
+      {
+        baseName: 'TO APOKRYFO',
+        components: [
+          {
+            establishmentType: 'TRADITIONAL BUILDINGS',
+            name: 'TO APOKRYFO 1',
+          },
+          {
+            establishmentType: 'TRADITIONAL BUILDINGS',
+            name: 'TO APOKRYFO 2',
+          },
+          {
+            establishmentType: 'TRADITIONAL BUILDINGS',
+            name: 'TO APOKRYFO 3',
+          },
+          {
+            establishmentType: 'TRADITIONAL BUILDINGS',
+            name: 'TO APOKRYFO 4',
+          },
+        ],
+        rule: 'numeric_suffix_group',
+      },
+      {
+        baseName: 'ELIAKON',
+        components: [
+          {
+            establishmentType: 'TRADITIONAL BUILDINGS',
+            name: 'ELIAKON 1',
+          },
+          {
+            establishmentType: 'TRADITIONAL BUILDINGS',
+            name: 'ELIAKON 2',
+          },
+        ],
+        rule: 'numeric_suffix_group',
+      },
+      {
+        baseName: 'ALIATHON RESORT',
+        components: [
+          {
+            establishmentType: 'HOTELS',
+            name: 'ALIATHON RESORT',
+          },
+          {
+            establishmentType: 'TOURIST VILLAGES',
+            name: 'ALIATHON RESORT',
+          },
+        ],
+        rule: 'same_name_multi_type_same_contacts',
+      },
+      {
+        baseName: 'PALATAKIA',
+        components: [
+          {
+            establishmentType: 'TRADITIONAL BUILDINGS',
+            name: 'PALATAKIA 2',
+          },
+          {
+            establishmentType: 'TRADITIONAL BUILDINGS',
+            name: 'PALATAKIA 3',
+          },
+        ],
+        rule: 'numeric_suffix_group',
+      },
+    ];
+
+    for (const groupCase of groupCases) {
+      const entries = buildStableGroupEntries(groupCase);
+      const forwardResult = service.buildFromRegistryEntries(entries);
+      const reverseResult = service.buildFromRegistryEntries(
+        entries.toReversed(),
+      );
+      const expectedComponents = sortExpectedComponents(groupCase.components);
+
+      expect(forwardResult.candidateKey).toBe(reverseResult.candidateKey);
+      expect(forwardResult.components).toEqual(reverseResult.components);
+      expect(forwardResult.kind).toBe(CANONICAL_HOTEL_KIND.PROPERTY_COMPLEX);
+      expect(forwardResult.build.rule).toBe(groupCase.rule);
+      expect(
+        sortExpectedComponents(
+          forwardResult.components.map(({ establishmentType, name }) => ({
+            establishmentType,
+            name,
+          })),
+        ),
+      ).toEqual(expectedComponents);
+    }
   });
 
   it('keeps shared-chain records separate unless the caller provides a safe group', () => {
@@ -195,10 +659,7 @@ describe('CanonicalHotelCandidateBuilderService', () => {
       registryKey: 'bohemian-gardens',
     });
 
-    const result = service.buildFromRegistryEntries([
-      firstEntry,
-      secondEntry,
-    ]);
+    const result = service.buildFromRegistryEntries([firstEntry, secondEntry]);
 
     expect(result.candidateKey).toBe('ccv1|single|tsokkos-gardens-hotel');
     expect(result.kind).toBe(CANONICAL_HOTEL_KIND.SINGLE_PROPERTY);
@@ -336,6 +797,170 @@ describe('CanonicalHotelCandidateBuilderService', () => {
     expect(result.kind).toBe(CANONICAL_HOTEL_KIND.PROPERTY_COMPLEX);
     expect(result.build.rule).toBe('same_name_multi_type_same_contacts');
     expect(result.components).toHaveLength(2);
+  });
+
+  it('groups same-name multi-type entries with compatible same-number address spelling variants', () => {
+    const hotelEntry = buildRegistryEntry({
+      contacts: {
+        domains: ['aliathonvillage.com'],
+        emails: ['info@aliathonresort.com'],
+        phones: ['+35726964400'],
+        websites: ['https://www.aliathonvillage.com/'],
+      },
+      establishmentType: 'HOTELS',
+      location: {
+        address: '3, Theas Afroditis Ave',
+        district: 'PAPHOS',
+        locality: 'Geroskipou',
+        postcode: '8204',
+      },
+      name: {
+        baseName: 'ALIATHON RESORT',
+        normalized: 'ALIATHON RESORT',
+        original: 'ALIATHON RESORT',
+        suffix: null,
+      },
+      operator: null,
+      registryKey: 'aliathon-resort-hotel',
+    });
+    const villageEntry = buildRegistryEntry({
+      contacts: {
+        domains: ['aliathonvillage.com'],
+        emails: ['info@aliathonresort.com'],
+        phones: ['+35726964400'],
+        websites: ['https://www.aliathonvillage.com/'],
+      },
+      establishmentType: 'TOURIST VILLAGES',
+      location: {
+        address: '3, Theas Aphrodites Avenue',
+        district: 'PAPHOS',
+        locality: 'Geroskipou',
+        postcode: '8204',
+      },
+      name: {
+        baseName: 'ALIATHON RESORT',
+        normalized: 'ALIATHON RESORT',
+        original: 'ALIATHON RESORT',
+        suffix: null,
+      },
+      operator: 'Aliathon Tourist Enterprises Ltd',
+      registryKey: 'aliathon-resort-village',
+    });
+
+    const result = service.buildFromRegistryEntries([hotelEntry, villageEntry]);
+
+    expect(result.kind).toBe(CANONICAL_HOTEL_KIND.PROPERTY_COMPLEX);
+    expect(result.build.rule).toBe('same_name_multi_type_same_contacts');
+  });
+
+  it('does not group same-name multi-type entries by shared chain website only', () => {
+    const hotelEntry = buildRegistryEntry({
+      contacts: {
+        domains: ['tsokkos.com'],
+        emails: [],
+        phones: [],
+        websites: ['https://www.tsokkos.com/'],
+      },
+      establishmentType: 'HOTELS',
+      location: {
+        address: '12, Athinas Street',
+        district: 'PARALIMNI',
+        locality: 'Paralimni',
+        postcode: '5296',
+      },
+      name: {
+        baseName: 'TSOKKOS GARDENS',
+        normalized: 'TSOKKOS GARDENS',
+        original: 'TSOKKOS GARDENS',
+        suffix: null,
+      },
+      registryKey: 'tsokkos-gardens-hotel',
+    });
+    const apartmentsEntry = buildRegistryEntry({
+      contacts: {
+        domains: ['tsokkos.com'],
+        emails: [],
+        phones: [],
+        websites: ['https://www.tsokkos.com/'],
+      },
+      establishmentType: 'HOTEL APARTMENTS',
+      location: {
+        address: '12, Athinas Street',
+        district: 'PARALIMNI',
+        locality: 'Paralimni',
+        postcode: '5296',
+      },
+      name: {
+        baseName: 'TSOKKOS GARDENS',
+        normalized: 'TSOKKOS GARDENS',
+        original: 'TSOKKOS GARDENS',
+        suffix: null,
+      },
+      registryKey: 'tsokkos-gardens-apartments',
+    });
+
+    const result = service.buildFromRegistryEntries([
+      hotelEntry,
+      apartmentsEntry,
+    ]);
+
+    expect(result.kind).toBe(CANONICAL_HOTEL_KIND.SINGLE_PROPERTY);
+    expect(result.candidateKey).toBe('ccv1|single|tsokkos-gardens-hotel');
+  });
+
+  it('does not group same-name multi-type entries when addresses conflict', () => {
+    const hotelEntry = buildRegistryEntry({
+      contacts: {
+        domains: [],
+        emails: ['gardens@tsokkos.com'],
+        phones: ['+35723833636'],
+        websites: [],
+      },
+      establishmentType: 'HOTELS',
+      location: {
+        address: '12, Athinas Street',
+        district: 'PARALIMNI',
+        locality: 'Paralimni',
+        postcode: '5296',
+      },
+      name: {
+        baseName: 'TSOKKOS GARDENS',
+        normalized: 'TSOKKOS GARDENS',
+        original: 'TSOKKOS GARDENS',
+        suffix: null,
+      },
+      registryKey: 'tsokkos-gardens-hotel',
+    });
+    const apartmentsEntry = buildRegistryEntry({
+      contacts: {
+        domains: [],
+        emails: ['gardens@tsokkos.com'],
+        phones: ['+35723833636'],
+        websites: [],
+      },
+      establishmentType: 'HOTEL APARTMENTS',
+      location: {
+        address: '18, Athinas Street',
+        district: 'PARALIMNI',
+        locality: 'Paralimni',
+        postcode: '5296',
+      },
+      name: {
+        baseName: 'TSOKKOS GARDENS',
+        normalized: 'TSOKKOS GARDENS',
+        original: 'TSOKKOS GARDENS',
+        suffix: null,
+      },
+      registryKey: 'tsokkos-gardens-apartments',
+    });
+
+    const result = service.buildFromRegistryEntries([
+      hotelEntry,
+      apartmentsEntry,
+    ]);
+
+    expect(result.kind).toBe(CANONICAL_HOTEL_KIND.SINGLE_PROPERTY);
+    expect(result.candidateKey).toBe('ccv1|single|tsokkos-gardens-hotel');
   });
 
   it('collapses same-name same-type duplicates without summing capacity', () => {
