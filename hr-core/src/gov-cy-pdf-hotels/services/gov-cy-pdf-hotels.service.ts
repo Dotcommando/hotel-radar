@@ -49,6 +49,7 @@ import {
   makeStrictHotelDedupeKey,
   normalizeHotelName,
 } from '../../raw-hotels/utils/hotel-identity.util';
+import { normalizeHotelCapacity } from '../../raw-hotels/utils/hotel-capacity-normalization.util';
 import { normalizeCyprusPhones } from '../utils/cyprus-phone-normalization.util';
 
 interface INormalizedWebsiteCandidate {
@@ -344,13 +345,19 @@ export class GovCyPdfHotelsService {
 
     for (const hotel of hotels) {
       const nameNormalized = normalizeHotelName(hotel.name);
+      const capacity = normalizeHotelCapacity({
+        beds: hotel.beds,
+        rooms: hotel.rooms,
+      });
 
       recognizedHotels.push({
         ...hotel,
         address: this.normalizeOptionalText(hotel.address),
+        beds: capacity.beds,
         createdAt: new Date(),
         contacts: this.normalizeContacts(hotel.contacts),
         nameNormalized,
+        rooms: capacity.rooms,
         sourceFile,
         updatedAt: new Date(hotel.updatedAt),
       });

@@ -375,6 +375,48 @@ describe('RawHotelsService', () => {
     expect(result).toBe(1);
   });
 
+  it('normalizes parsed capacity before upserting and building strict dedupe key', async () => {
+    const reversedCapacityRawHotel: ICreateRawHotel = {
+      ...createRawHotelFixture,
+      beds: 3,
+      name: 'ARCHONTIKO I MISIRLOU',
+      rooms: 10,
+    };
+
+    mockFindOneResult(null);
+    mockUpdateOneResult();
+
+    await service.upsertManyByStrictHotelDedupeKeyAndSourceFileName([
+      reversedCapacityRawHotel,
+    ]);
+
+    const nameNormalized = normalizeHotelName(reversedCapacityRawHotel.name);
+    const strictHotelDedupeKey = makeStrictHotelDedupeKey({
+      beds: 10,
+      contacts: reversedCapacityRawHotel.contacts,
+      nameNormalized,
+      postcode: reversedCapacityRawHotel.postcode,
+      rooms: 3,
+    });
+
+    expect(rawHotelModel.updateOne).toHaveBeenCalledWith(
+      {
+        'sourceFile.filename': reversedCapacityRawHotel.sourceFile.filename,
+        strictHotelDedupeKey,
+      },
+      expect.objectContaining({
+        $set: expect.objectContaining({
+          beds: 10,
+          rooms: 3,
+          strictHotelDedupeKey,
+        }),
+      }),
+      {
+        upsert: true,
+      },
+    );
+  });
+
   it('replaces a matching raw hotel without address when the new record has address', async () => {
     const existingRawHotel: IPersistedRawHotel = {
       ...rawHotelFixture,

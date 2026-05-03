@@ -3,6 +3,7 @@ import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import { HOTEL_PROCESSING_STATUS } from '../hotel-processing/constants/hotel-processing-status.enum';
 import { IRawHotel } from '../raw-hotels/types/raw-hotel.interface';
+import { normalizeHotelCapacity } from '../raw-hotels/utils/hotel-capacity-normalization.util';
 import { normalizeHotelLocation } from '../raw-hotels/utils/hotel-location-normalization.util';
 import { HOTEL_REGISTRY_ENTRY_MODEL_NAME } from './constants/hotel-registry-entry-model-name.constant';
 import { HOTEL_REGISTRY_ENTRY_STATUS } from './constants/hotel-registry-entry-status.enum';
@@ -23,6 +24,10 @@ import {
   splitRegistryNameSuffix,
 } from './utils/hotel-registry-normalization.util';
 
+interface IRawHotelDocumentLike extends IRawHotel {
+  toObject: () => IRawHotel;
+}
+
 @Injectable()
 export class HotelRegistryEntriesService {
   constructor(
@@ -33,9 +38,10 @@ export class HotelRegistryEntriesService {
   async upsertFromRawHotel(
     rawHotel: IRawHotel,
   ): Promise<IUpsertHotelRegistryEntryResult> {
+    const rawHotelFields = this.toRawHotelFields(rawHotel);
     const normalizedRawHotel = {
-      ...rawHotel,
-      ...normalizeHotelLocation(rawHotel),
+      ...rawHotelFields,
+      ...normalizeHotelLocation(rawHotelFields),
     };
     const registryKey = makeHotelRegistryKey({
       address: normalizedRawHotel.address,
@@ -733,18 +739,21 @@ export class HotelRegistryEntriesService {
   }
 
   private normalizeParsedCapacity(rawCapacity: IHotelCapacity): IHotelCapacity {
-    if (
-      rawCapacity.rooms !== null
-        && rawCapacity.beds !== null
-        && rawCapacity.rooms > rawCapacity.beds
-    ) {
-      return {
-        beds: rawCapacity.rooms,
-        rooms: rawCapacity.beds,
-      };
+    return normalizeHotelCapacity(rawCapacity);
+  }
+
+  private toRawHotelFields(rawHotel: IRawHotel): IRawHotel {
+    if (this.isRawHotelDocumentLike(rawHotel)) {
+      return rawHotel.toObject();
     }
 
-    return rawCapacity;
+    return rawHotel;
+  }
+
+  private isRawHotelDocumentLike(
+    rawHotel: IRawHotel,
+  ): rawHotel is IRawHotelDocumentLike {
+    return 'toObject' in rawHotel && typeof rawHotel.toObject === 'function';
   }
 
   private mergeCapacity(

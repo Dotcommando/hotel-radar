@@ -15,6 +15,7 @@ import { IDownloadedGovCyPdfFile } from '../types/downloaded-gov-cy-pdf-file.int
 import { IDiscoveredGovCyPdfFile } from '../types/discovered-gov-cy-pdf-file.interface';
 import { IRecognizedGovCyHotelRecord } from '../types/recognized-gov-cy-hotel-record.interface';
 import { IPrompt } from '../../prompts/types/prompt.interface';
+import { IOpenAiHotelsEnvelope } from '../types/openai-hotels-envelope.interface';
 
 jest.mock('node:fs/promises', () => ({
   access: jest.fn(),
@@ -124,6 +125,19 @@ describe('GovCyPdfHotelsService', () => {
     stars: 5,
     updatedAt: new Date('2026-02-20T00:00:00.000Z'),
   };
+  const {
+    createdAt,
+    sourceFile,
+    updatedAt,
+    ...recognizedHotelOpenAiFieldsFixture
+  } = recognizedHotelFixture;
+  void createdAt;
+  void sourceFile;
+  void updatedAt;
+  const openAiHotelFieldsFixture: IOpenAiHotelsEnvelope['hotels'][number] = {
+    ...recognizedHotelOpenAiFieldsFixture,
+    updatedAt: '2026-02-20T00:00:00.000Z',
+  };
 
   const mkdirMock = jest.mocked(fsPromises.mkdir);
   const chmodMock = jest.mocked(fsPromises.chmod);
@@ -172,6 +186,54 @@ describe('GovCyPdfHotelsService', () => {
     config.openAiResponsesTimeoutMs = 360000;
     jest.useRealTimers();
   });
+
+  function mockPdfParsePromptReads(): void {
+    promptsService.readLatestByType
+      .mockResolvedValueOnce({
+        content: 'System prompt from db',
+        createdAt: new Date('2026-04-21T00:00:00.000Z'),
+        type: PROMPT_TYPE.GOV_CY_PDF_PARSE_SYSTEM,
+        updatedAt: new Date('2026-04-21T00:00:00.000Z'),
+        version: 1,
+      })
+      .mockResolvedValueOnce({
+        content: 'User prompt from db',
+        createdAt: new Date('2026-04-21T00:00:00.000Z'),
+        type: PROMPT_TYPE.GOV_CY_PDF_PARSE_USER,
+        updatedAt: new Date('2026-04-21T00:00:00.000Z'),
+        version: 1,
+      });
+  }
+
+  function mockCompletedOpenAiParse(
+    hotels: IOpenAiHotelsEnvelope['hotels'],
+  ): void {
+    jest
+      .mocked(global.fetch)
+      .mockResolvedValueOnce({
+        json: async () => ({ id: 'file_123' }),
+        ok: true,
+        status: 200,
+      })
+      .mockResolvedValueOnce({
+        json: async () => ({
+          output: [
+            {
+              content: [
+                {
+                  text: JSON.stringify({
+                    hotels,
+                  }),
+                  type: 'output_text',
+                },
+              ],
+            },
+          ],
+        }),
+        ok: true,
+        status: 200,
+      });
+  }
 
   it('discovers fallback hotel pdf links via Apify when no pancyprian file is present', async () => {
     jest.mocked(global.fetch).mockResolvedValueOnce({
@@ -1295,6 +1357,166 @@ describe('GovCyPdfHotelsService', () => {
         updatedAt: new Date('2026-04-08T00:00:00.000Z'),
       },
     ]);
+  });
+
+  it('normalizes reversed parsed rooms and beds before returning parsed hotels', async () => {
+    readFileMock.mockResolvedValue(Buffer.from('pdf-binary'));
+    mockPdfParsePromptReads();
+
+    const expectedCapacities = [
+      ['AGIA MARINA', 5, 10],
+      ['AGIOS ANDRONIKOS', 6, 12],
+      ['ARCHONTIKO I MISIRLOU', 3, 10],
+      ['ATRATSA MOUNTAIN APARTMENTS', 5, 12],
+      ['BYZANTINO', 2, 4],
+      ['DEL CONTE', 4, 10],
+      ['ELIAKON 1', 2, 6],
+      ['ELIAKON 2', 2, 4],
+      ['ELIANTHOUSA', 2, 6],
+      ['HANI TOU CHRISOMILOU', 1, 2],
+      ['LAOURI', 2, 6],
+      ['MAISON ELENA', 4, 12],
+      ['MARATHO', 4, 8],
+      ['MARATHO 2', 3, 6],
+      ['PANTHEON', 6, 12],
+      ['THEOXENEIA', 3, 6],
+      ['TO KASTRI', 3, 8],
+      ['TO PALATAKI TIS VASILIKIS', 3, 10],
+      ['LOUTRAKI', 6, 12],
+      ['HORIO', 2, 4],
+    ] as const;
+
+    mockCompletedOpenAiParse(
+      expectedCapacities.map(([name, expectedRooms, expectedBeds]) => ({
+        ...openAiHotelFieldsFixture,
+        beds: expectedRooms,
+        name,
+        nameNormalized: name,
+        rooms: expectedBeds,
+      })),
+    );
+
+    const result = await service.parsePdfFiles([downloadedPdfFileFixture]);
+
+    expect(
+      result.map(({ name, rooms, beds }) => ({
+        beds,
+        name,
+        rooms,
+      })),
+    ).toEqual(
+      expectedCapacities.map(([name, rooms, beds]) => ({
+        beds,
+        name,
+        rooms,
+      })),
+    );
+  });
+
+  it('does not normalize null or zero parsed capacity values', async () => {
+    readFileMock.mockResolvedValue(Buffer.from('pdf-binary'));
+    mockPdfParsePromptReads();
+    mockCompletedOpenAiParse([
+      {
+        ...openAiHotelFieldsFixture,
+        beds: 0,
+        name: 'ART & WINE',
+        nameNormalized: 'ART & WINE',
+        rooms: 0,
+      },
+      {
+        ...openAiHotelFieldsFixture,
+        beds: 10,
+        name: 'NULL ROOMS',
+        nameNormalized: 'NULL ROOMS',
+        rooms: null,
+      },
+      {
+        ...openAiHotelFieldsFixture,
+        beds: null,
+        name: 'NULL BEDS',
+        nameNormalized: 'NULL BEDS',
+        rooms: 10,
+      },
+    ]);
+
+    const result = await service.parsePdfFiles([downloadedPdfFileFixture]);
+
+    expect(
+      result.map(({ name, rooms, beds }) => ({
+        beds,
+        name,
+        rooms,
+      })),
+    ).toEqual([
+      {
+        beds: 0,
+        name: 'ART & WINE',
+        rooms: 0,
+      },
+      {
+        beds: 10,
+        name: 'NULL ROOMS',
+        rooms: null,
+      },
+      {
+        beds: null,
+        name: 'NULL BEDS',
+        rooms: 10,
+      },
+    ]);
+  });
+
+  it('deduplicates overlap copies after capacity normalization', async () => {
+    const warnSpy = jest.spyOn(console, 'warn').mockImplementation();
+
+    readFileMock.mockResolvedValue(Buffer.from('pdf-binary'));
+    mockPdfParsePromptReads();
+    mockCompletedOpenAiParse([
+      {
+        ...openAiHotelFieldsFixture,
+        beds: 20,
+        name: 'NEW HELVETIA',
+        nameNormalized: 'NEW HELVETIA',
+        rooms: 10,
+      },
+      {
+        ...openAiHotelFieldsFixture,
+        beds: 10,
+        name: 'NEW HELVETIA',
+        nameNormalized: 'NEW HELVETIA',
+        rooms: 20,
+      },
+    ]);
+
+    const onParsedBatch = jest
+      .fn<Promise<void>, [IRecognizedGovCyHotelRecord[]]>()
+      .mockResolvedValue();
+
+    const result = await service.parsePdfFiles(
+      [downloadedPdfFileFixture],
+      onParsedBatch,
+    );
+
+    expect(onParsedBatch).toHaveBeenCalledWith([
+      expect.objectContaining({
+        beds: 20,
+        name: 'NEW HELVETIA',
+        rooms: 10,
+      }),
+    ]);
+    expect(result).toEqual([
+      expect.objectContaining({
+        beds: 20,
+        name: 'NEW HELVETIA',
+        rooms: 10,
+      }),
+    ]);
+    expect(warnSpy).not.toHaveBeenCalledWith(
+      expect.stringContaining('suspicious overlap duplicate'),
+    );
+
+    warnSpy.mockRestore();
   });
 
   it('collects, downloads and parses pdf files end-to-end', async () => {

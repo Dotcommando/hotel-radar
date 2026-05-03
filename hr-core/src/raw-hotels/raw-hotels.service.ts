@@ -12,6 +12,7 @@ import {
   makeStrictHotelDedupeKey,
   normalizeHotelName,
 } from './utils/hotel-identity.util';
+import { normalizeHotelCapacity } from './utils/hotel-capacity-normalization.util';
 
 interface IPersistedRawHotelFields extends ICreateRawHotel {
   addressMergeDedupeKey: string;
@@ -74,27 +75,36 @@ export class RawHotelsService {
   private buildPersistedRawHotel(
     rawHotel: ICreateRawHotel,
   ): IPersistedRawHotelFields {
+    const capacity = normalizeHotelCapacity({
+      beds: rawHotel.beds,
+      rooms: rawHotel.rooms,
+    });
+    const normalizedRawHotel = {
+      ...rawHotel,
+      beds: capacity.beds,
+      rooms: capacity.rooms,
+    };
     const nameNormalized = normalizeHotelName(rawHotel.name);
 
     return {
-      ...rawHotel,
+      ...normalizedRawHotel,
       addressMergeDedupeKey: makeAddressMergeHotelDedupeKey({
-        contacts: rawHotel.contacts,
-        establishmentType: rawHotel.establishmentType,
-        locality: rawHotel.locality,
+        contacts: normalizedRawHotel.contacts,
+        establishmentType: normalizedRawHotel.establishmentType,
+        locality: normalizedRawHotel.locality,
         nameNormalized,
-        operatorName: rawHotel.operatorName,
-        postcode: rawHotel.postcode,
-        region: rawHotel.region,
+        operatorName: normalizedRawHotel.operatorName,
+        postcode: normalizedRawHotel.postcode,
+        region: normalizedRawHotel.region,
       }),
       nameMatchKey: makeNameMatchKey(nameNormalized),
       nameNormalized,
       strictHotelDedupeKey: makeStrictHotelDedupeKey({
-        beds: rawHotel.beds,
-        contacts: rawHotel.contacts,
+        beds: normalizedRawHotel.beds,
+        contacts: normalizedRawHotel.contacts,
         nameNormalized,
-        postcode: rawHotel.postcode,
-        rooms: rawHotel.rooms,
+        postcode: normalizedRawHotel.postcode,
+        rooms: normalizedRawHotel.rooms,
       }),
     };
   }

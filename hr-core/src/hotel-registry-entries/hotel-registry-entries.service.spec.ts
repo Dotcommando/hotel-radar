@@ -1,7 +1,8 @@
 import { getModelToken } from '@nestjs/mongoose';
 import { Test, TestingModule } from '@nestjs/testing';
-import { Types } from 'mongoose';
+import { model, Types } from 'mongoose';
 import { HOTEL_PROCESSING_STATUS } from '../hotel-processing/constants/hotel-processing-status.enum';
+import { rawHotelSchema } from '../raw-hotels/schemas/raw-hotel.schema';
 import { IRawHotel } from '../raw-hotels/types/raw-hotel.interface';
 import { HOTEL_REGISTRY_ENTRY_MODEL_NAME } from './constants/hotel-registry-entry-model-name.constant';
 import { HOTEL_REGISTRY_ENTRY_STATUS } from './constants/hotel-registry-entry-status.enum';
@@ -286,6 +287,65 @@ describe('HotelRegistryEntriesService', () => {
             address: 'Poseidonos Avenue',
             locality: 'Pafos',
             postcode: '8042',
+          }),
+        }),
+      }),
+      {
+        upsert: true,
+      },
+    );
+  });
+
+  it('keeps raw hotel fields when input is a Mongoose document', async () => {
+    const RawHotelModel = model<IRawHotel>(
+      `RawHotelRegistryEntriesServiceSpec${new Types.ObjectId().toHexString()}`,
+      rawHotelSchema,
+    );
+    const rawHotelDocument = new RawHotelModel({
+      ...rawHotelFixture,
+      address: 'Poseidonos Avenue 8042, Pafos',
+      locality: 'Pafos',
+      postcode: '8042',
+    });
+    const upsertedEntry = buildRegistryEntry({
+      location: {
+        address: 'Poseidonos Avenue',
+        district: 'Pafos',
+        locality: 'Pafos',
+        postcode: '8042',
+      },
+      registryKey:
+        'rkv1|EXAMPLE APARTMENTS|APARTMENTS|PAFOS|PAFOS|8042|POSEIDONOS AVENUE',
+    });
+
+    mockFindOneResults(null, upsertedEntry);
+    mockUpdateOneResult();
+
+    await service.upsertFromRawHotel(rawHotelDocument);
+
+    expect(hotelRegistryEntryModel.findOne).toHaveBeenCalledWith({
+      registryKey:
+        'rkv1|EXAMPLE APARTMENTS|APARTMENTS|PAFOS|PAFOS|8042|POSEIDONOS AVENUE',
+    });
+    expect(hotelRegistryEntryModel.updateOne).toHaveBeenCalledWith(
+      {
+        registryKey:
+          'rkv1|EXAMPLE APARTMENTS|APARTMENTS|PAFOS|PAFOS|8042|POSEIDONOS AVENUE',
+      },
+      expect.objectContaining({
+        $set: expect.objectContaining({
+          capacity: {
+            beds: 20,
+            rooms: 10,
+          },
+          location: expect.objectContaining({
+            address: 'Poseidonos Avenue',
+            locality: 'Pafos',
+            postcode: '8042',
+          }),
+          name: expect.objectContaining({
+            normalized: 'EXAMPLE APARTMENTS',
+            original: 'EXAMPLE APARTMENTS',
           }),
         }),
       }),
