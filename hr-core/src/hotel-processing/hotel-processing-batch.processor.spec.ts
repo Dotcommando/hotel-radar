@@ -598,4 +598,75 @@ describe('HotelProcessingBatchProcessor registry-to-candidates', () => {
       canonicalHotelCandidatesService.upsertAmbiguousBaseCandidate,
     ).not.toHaveBeenCalled();
   });
+
+  it('marks LITO base and numeric suffix rows with one grouped candidate id', async () => {
+    const baseEntry = buildRegistryEntry({
+      name: {
+        baseName: 'LITO',
+        normalized: 'LITO',
+        original: 'LITO',
+        suffix: null,
+      },
+      registryKey: 'lito-base',
+    });
+    const secondEntry = buildRegistryEntry({
+      name: {
+        baseName: 'LITO',
+        normalized: 'LITO 2',
+        original: 'LITO 2',
+        suffix: '2',
+      },
+      registryKey: 'lito-2',
+    });
+    const thirdEntry = buildRegistryEntry({
+      name: {
+        baseName: 'LITO',
+        normalized: 'LITO 3',
+        original: 'LITO 3',
+        suffix: '3',
+      },
+      registryKey: 'lito-3',
+    });
+    const candidateId = new Types.ObjectId();
+
+    hotelRegistryEntriesService.claimPendingForRun.mockResolvedValue([
+      baseEntry,
+    ]);
+    hotelRegistryEntriesService.readSafeCanonicalCandidateGroup.mockResolvedValue(
+      [secondEntry, thirdEntry, baseEntry],
+    );
+    hotelRegistryEntriesService.hasCompatibleNumericSuffixGroup.mockResolvedValue(
+      false,
+    );
+    canonicalHotelCandidatesService.upsertFromRegistryEntries.mockResolvedValue(
+      buildCandidate(candidateId),
+    );
+    hotelRegistryEntriesService.countByProcessingStatus.mockResolvedValue(0);
+
+    await processor.processRegistryToCandidatesBatch({
+      batchNo: 1,
+      batchSize: 50,
+      runId: 'run-1',
+      stage: HOTEL_PROCESSING_STAGE.REGISTRY_TO_CANDIDATES,
+    });
+
+    expect(hotelRegistryEntriesService.markProcessed).toHaveBeenCalledWith(
+      baseEntry._id,
+      candidateId,
+      'run-1',
+    );
+    expect(hotelRegistryEntriesService.markProcessed).toHaveBeenCalledWith(
+      secondEntry._id,
+      candidateId,
+      'run-1',
+    );
+    expect(hotelRegistryEntriesService.markProcessed).toHaveBeenCalledWith(
+      thirdEntry._id,
+      candidateId,
+      'run-1',
+    );
+    expect(
+      canonicalHotelCandidatesService.upsertAmbiguousBaseCandidate,
+    ).not.toHaveBeenCalled();
+  });
 });

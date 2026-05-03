@@ -173,6 +173,13 @@ export class CanonicalHotelCandidateBuilderService {
     const componentEntries =
       this.buildNumericSuffixArtifactComponents(sortedEntries);
     const firstComponentEntry = componentEntries[0].entry;
+    const firstSuffixEntry = sortedEntries.find(
+      ({ name }) => this.readNumericSuffixNumber(name.suffix) !== null,
+    );
+
+    if (firstSuffixEntry === undefined) {
+      throw new Error('Cannot build numeric suffix artifact candidate key.');
+    }
 
     return {
       build: {
@@ -181,7 +188,7 @@ export class CanonicalHotelCandidateBuilderService {
         ruleVersion: 1,
       },
       candidateKey:
-        this.buildNumericSuffixGroupCandidateKey(firstComponentEntry),
+        this.buildNumericSuffixGroupCandidateKey(firstSuffixEntry),
       canonicalName: firstComponentEntry.name.baseName,
       capacity: {
         beds: this.sumNullableNumbers(
@@ -476,7 +483,7 @@ export class CanonicalHotelCandidateBuilderService {
         left.location.postcode,
         right.location.postcode,
       ) &&
-      this.hasCompatibleNumericSuffixLocation(left, right) &&
+      this.hasCompatibleNumericSuffixArtifactLocation(left, right) &&
       this.hasMeaningfulContactOverlap(left, right) &&
       this.hasStrictNumericSuffixArtifactOperator(left, right)
     );
@@ -827,14 +834,23 @@ export class CanonicalHotelCandidateBuilderService {
   private getLocationScore(location: IHotelLocation): number {
     let score = 0;
 
-    if (
-      location.district !== null &&
-      location.locality !== null &&
-      this.normalizeText(location.district).includes(
-        this.normalizeText(location.locality),
-      )
-    ) {
-      score += 10000;
+    if (location.district !== null && location.locality !== null) {
+      const normalizedDistrict = this.normalizeText(location.district);
+      const normalizedLocality = this.normalizeText(location.locality);
+
+      if (
+        normalizedDistrict !== normalizedLocality &&
+        normalizedDistrict.includes(normalizedLocality)
+      ) {
+        score += 10000;
+      }
+
+      if (
+        normalizedDistrict !== normalizedLocality &&
+        !normalizedDistrict.includes(normalizedLocality)
+      ) {
+        score += 100;
+      }
     }
 
     if (location.postcode !== null) {
@@ -923,6 +939,24 @@ export class CanonicalHotelCandidateBuilderService {
     }
 
     return false;
+  }
+
+  private hasCompatibleNumericSuffixArtifactLocation(
+    left: IHotelRegistryEntry,
+    right: IHotelRegistryEntry,
+  ): boolean {
+    if (this.hasCompatibleNumericSuffixLocation(left, right)) {
+      return true;
+    }
+
+    if (left.location.address !== null && right.location.address !== null) {
+      return false;
+    }
+
+    return this.hasSameNonEmptyValue(
+      left.location.district,
+      right.location.district,
+    );
   }
 
   private hasCompatibleLocationText(left: string, right: string): boolean {
@@ -1021,6 +1055,10 @@ export class CanonicalHotelCandidateBuilderService {
     left: IHotelRegistryEntry,
     right: IHotelRegistryEntry,
   ): boolean {
+    if (left.name.suffix !== null && right.name.suffix !== null) {
+      return this.hasCompatibleOperator(left, right);
+    }
+
     return (
       left.operator === null ||
       right.operator === null ||
@@ -1248,6 +1286,13 @@ export class CanonicalHotelCandidateBuilderService {
     entries: IHotelRegistryEntry[],
   ): INumericSuffixArtifactComponent[] {
     const components: INumericSuffixArtifactComponent[] = [];
+    const sortedEntries = this.sortNumericSuffixArtifactEntries(entries);
+    const suffixEntries = sortedEntries.filter(
+      (entry) => this.readNumericSuffixNumber(entry.name.suffix) !== null,
+    );
+    const baseEntries = sortedEntries.filter(
+      (entry) => entry.name.suffix === null,
+    );
     let nextInferredSuffix =
       Math.max(
         ...entries
@@ -1255,14 +1300,26 @@ export class CanonicalHotelCandidateBuilderService {
           .filter((value): value is number => value !== null),
       ) + 1;
 
-    for (const entry of this.sortNumericSuffixArtifactEntries(entries)) {
-      const suffixNumber = this.readNumericSuffixNumber(entry.name.suffix);
+    for (const entry of baseEntries) {
+      if (!this.isOfficialBaseNumericSuffixComponent(entry, entries)) {
+        continue;
+      }
 
-      if (suffixNumber !== null) {
-        components.push({
-          entry,
-          name: entry.name.original,
-        });
+      components.push({
+        entry,
+        name: entry.name.original,
+      });
+    }
+
+    for (const entry of suffixEntries) {
+      components.push({
+        entry,
+        name: entry.name.original,
+      });
+    }
+
+    for (const entry of baseEntries) {
+      if (this.isOfficialBaseNumericSuffixComponent(entry, entries)) {
         continue;
       }
 
@@ -1285,6 +1342,21 @@ export class CanonicalHotelCandidateBuilderService {
     }
 
     return components;
+  }
+
+  private isOfficialBaseNumericSuffixComponent(
+    entry: IHotelRegistryEntry,
+    entries: IHotelRegistryEntry[],
+  ): boolean {
+    if (entry.name.suffix !== null) {
+      return false;
+    }
+
+    const establishmentTypes = new Set(
+      entries.map(({ establishmentType }) => establishmentType),
+    );
+
+    return establishmentTypes.size === 1;
   }
 
   private isDuplicateNumericSuffixArtifactComponent(

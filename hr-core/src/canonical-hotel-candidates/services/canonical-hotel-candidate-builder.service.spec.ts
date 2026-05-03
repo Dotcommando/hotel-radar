@@ -655,6 +655,144 @@ describe('CanonicalHotelCandidateBuilderService', () => {
     ]);
   });
 
+  it('builds one LITO candidate from a base numeric-series component and suffix entries', () => {
+    const baseEntry = buildRegistryEntry({
+      capacity: {
+        beds: 2,
+        rooms: 1,
+      },
+      contacts: {
+        domains: ['agrotourismincyprus.com'],
+        emails: ['info@agrotourismincyprus.com'],
+        phones: ['+35724322089', '+35724534630'],
+        websites: ['https://www.agrotourismincyprus.com/'],
+      },
+      establishmentType: 'TRADITIONAL HOUSES - APARTMENTS',
+      location: {
+        address: null,
+        district: 'LARNACA',
+        locality: 'Skarinou',
+        postcode: '7731',
+      },
+      name: {
+        baseName: 'LITO',
+        normalized: 'LITO',
+        original: 'LITO',
+        suffix: null,
+      },
+      operator: null,
+      registryKey: 'lito-base',
+    });
+    const secondEntry = buildRegistryEntry({
+      capacity: {
+        beds: 4,
+        rooms: 2,
+      },
+      contacts: {
+        domains: ['agrotourismincyprus.com'],
+        emails: ['info@agrotourismincyprus.com'],
+        phones: ['+35724322089'],
+        websites: ['https://www.agrotourismincyprus.com/'],
+      },
+      establishmentType: 'TRADITIONAL HOUSES - APARTMENTS',
+      location: {
+        address: null,
+        district: 'LARNACA',
+        locality: 'Larnaca',
+        postcode: '7731',
+      },
+      name: {
+        baseName: 'LITO',
+        normalized: 'LITO 2',
+        original: 'LITO 2',
+        suffix: '2',
+      },
+      operator: 'Gei Land Agrotourism Ltd',
+      registryKey: 'lito-2',
+    });
+    const thirdEntry = buildRegistryEntry({
+      capacity: {
+        beds: 2,
+        rooms: 1,
+      },
+      contacts: {
+        domains: ['agrotourismincyprus.com'],
+        emails: ['info@agrotourismincyprus.com'],
+        phones: ['+35724322089'],
+        websites: ['https://www.agrotourismincyprus.com/'],
+      },
+      establishmentType: 'TRADITIONAL HOUSES - APARTMENTS',
+      location: {
+        address: null,
+        district: 'LARNACA',
+        locality: 'Larnaca',
+        postcode: '7731',
+      },
+      name: {
+        baseName: 'LITO',
+        normalized: 'LITO 3',
+        original: 'LITO 3',
+        suffix: '3',
+      },
+      operator: 'Gemi Land Agrotourism Ltd',
+      registryKey: 'lito-3',
+    });
+
+    const result = service.buildFromRegistryEntries([
+      secondEntry,
+      baseEntry,
+      thirdEntry,
+    ]);
+
+    expect(result.canonicalName).toBe('LITO');
+    expect(result.kind).toBe(CANONICAL_HOTEL_KIND.PROPERTY_COMPLEX);
+    expect(result.status).toBe(CANONICAL_HOTEL_CANDIDATE_STATUS.READY);
+    expect(result.build).toEqual({
+      issues: [],
+      rule: 'numeric_suffix_group',
+      ruleVersion: 1,
+    });
+    expect(result.capacity).toEqual({
+      beds: 8,
+      mode: CANONICAL_HOTEL_CAPACITY_MODE.SUM_COMPONENTS,
+      rooms: 4,
+    });
+    expect(result.location).toEqual({
+      address: null,
+      district: 'LARNACA',
+      locality: 'Skarinou',
+      postcode: '7731',
+    });
+    expect(result.contacts.domains).toEqual(['agrotourismincyprus.com']);
+    expect(result.contacts.emails).toEqual([
+      'info@agrotourismincyprus.com',
+    ]);
+    expect(result.contacts.phones).toEqual([
+      '+35724322089',
+      '+35724534630',
+    ]);
+    expect(result.components).toEqual([
+      {
+        beds: 2,
+        establishmentType: 'TRADITIONAL HOUSES - APARTMENTS',
+        name: 'LITO',
+        rooms: 1,
+      },
+      {
+        beds: 4,
+        establishmentType: 'TRADITIONAL HOUSES - APARTMENTS',
+        name: 'LITO 2',
+        rooms: 2,
+      },
+      {
+        beds: 2,
+        establishmentType: 'TRADITIONAL HOUSES - APARTMENTS',
+        name: 'LITO 3',
+        rooms: 1,
+      },
+    ]);
+  });
+
   it('builds the stable Stage 2 grouped candidates with exact components', () => {
     const groupCases: IStableGroupCase[] = [
       {

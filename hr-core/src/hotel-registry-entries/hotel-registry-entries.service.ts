@@ -583,7 +583,7 @@ export class HotelRegistryEntriesService {
         left.location.postcode,
         right.location.postcode,
       ) &&
-      this.hasCompatibleNumericSuffixLocation(left, right) &&
+      this.hasCompatibleNumericSuffixArtifactLocation(left, right) &&
       this.hasMeaningfulContactOverlap(left, right) &&
       this.hasStrictNumericSuffixArtifactOperator(left, right)
     );
@@ -907,6 +907,24 @@ export class HotelRegistryEntriesService {
     return false;
   }
 
+  private hasCompatibleNumericSuffixArtifactLocation(
+    left: IHotelRegistryEntry,
+    right: IHotelRegistryEntry,
+  ): boolean {
+    if (this.hasCompatibleNumericSuffixLocation(left, right)) {
+      return true;
+    }
+
+    if (left.location.address !== null && right.location.address !== null) {
+      return false;
+    }
+
+    return this.hasSameNonEmptyValue(
+      left.location.district,
+      right.location.district,
+    );
+  }
+
   private hasCompatibleLocationText(left: string, right: string): boolean {
     const normalizedLeft = this.normalizeLocationTextForCompare(left);
     const normalizedRight = this.normalizeLocationTextForCompare(right);
@@ -1012,6 +1030,10 @@ export class HotelRegistryEntriesService {
     left: IHotelRegistryEntry,
     right: IHotelRegistryEntry,
   ): boolean {
+    if (left.name.suffix !== null && right.name.suffix !== null) {
+      return this.hasCompatibleOperator(left, right);
+    }
+
     return (
       left.operator === null ||
       right.operator === null ||
