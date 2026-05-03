@@ -471,8 +471,13 @@ describe('HotelProcessingBatchProcessor registry-to-candidates', () => {
     );
   });
 
-  it('marks every PALATAKIA suffix artifact row with the grouped candidate id', async () => {
-    const suffixEntry = buildRegistryEntry({
+  it('marks only PALATAKIA business suffix components with the grouped candidate id', async () => {
+    const secondEntry = buildRegistryEntry({
+      capacity: {
+        beds: 10,
+        rooms: 5,
+      },
+      establishmentType: 'TRADITIONAL HOUSES - APARTMENTS',
       name: {
         baseName: 'PALATAKIA',
         normalized: 'PALATAKIA 2',
@@ -481,31 +486,27 @@ describe('HotelProcessingBatchProcessor registry-to-candidates', () => {
       },
       registryKey: 'palatakia-2-apartments',
     });
-    const duplicateBaseEntry = buildRegistryEntry({
+    const thirdEntry = buildRegistryEntry({
+      capacity: {
+        beds: 8,
+        rooms: 4,
+      },
+      establishmentType: 'TRADITIONAL HOUSES - HOTELS',
       name: {
         baseName: 'PALATAKIA',
-        normalized: 'PALATAKIA',
-        original: 'PALATAKIA',
-        suffix: null,
+        normalized: 'PALATAKIA 3',
+        original: 'PALATAKIA 3',
+        suffix: '3',
       },
-      registryKey: 'palatakia-base-apartments',
-    });
-    const missingSuffixEntry = buildRegistryEntry({
-      name: {
-        baseName: 'PALATAKIA',
-        normalized: 'PALATAKIA',
-        original: 'PALATAKIA',
-        suffix: null,
-      },
-      registryKey: 'palatakia-base-hotels',
+      registryKey: 'palatakia-3-hotels',
     });
     const candidateId = new Types.ObjectId();
 
     hotelRegistryEntriesService.claimPendingForRun.mockResolvedValue([
-      missingSuffixEntry,
+      thirdEntry,
     ]);
     hotelRegistryEntriesService.readSafeCanonicalCandidateGroup.mockResolvedValue(
-      [suffixEntry, duplicateBaseEntry, missingSuffixEntry],
+      [secondEntry, thirdEntry],
     );
     hotelRegistryEntriesService.hasCompatibleNumericSuffixGroup.mockResolvedValue(
       false,
@@ -523,20 +524,16 @@ describe('HotelProcessingBatchProcessor registry-to-candidates', () => {
     });
 
     expect(hotelRegistryEntriesService.markProcessed).toHaveBeenCalledWith(
-      suffixEntry._id,
+      secondEntry._id,
       candidateId,
       'run-1',
     );
     expect(hotelRegistryEntriesService.markProcessed).toHaveBeenCalledWith(
-      duplicateBaseEntry._id,
+      thirdEntry._id,
       candidateId,
       'run-1',
     );
-    expect(hotelRegistryEntriesService.markProcessed).toHaveBeenCalledWith(
-      missingSuffixEntry._id,
-      candidateId,
-      'run-1',
-    );
+    expect(hotelRegistryEntriesService.markProcessed).toHaveBeenCalledTimes(2);
     expect(
       canonicalHotelCandidatesService.upsertAmbiguousBaseCandidate,
     ).not.toHaveBeenCalled();

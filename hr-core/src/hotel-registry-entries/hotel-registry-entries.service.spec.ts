@@ -40,6 +40,7 @@ interface IHotelRegistryEntryModelMock {
     IExecable<IHotelRegistryEntry | null>,
     [Record<string, unknown>, Record<string, unknown>, IFindOneAndUpdateOptions]
   >;
+  deleteOne: jest.Mock<IExecable<unknown>, [Record<string, unknown>]>;
   updateOne: jest.Mock<
     IExecable<unknown>,
     [Record<string, unknown>, Record<string, unknown>, IUpdateOneOptions?]
@@ -92,6 +93,7 @@ describe('HotelRegistryEntriesService', () => {
 
   beforeEach(async () => {
     hotelRegistryEntryModel = {
+      deleteOne: jest.fn<IExecable<unknown>, [Record<string, unknown>]>(),
       find: jest.fn<
         {
           sort: jest.Mock<
@@ -118,6 +120,9 @@ describe('HotelRegistryEntriesService', () => {
         [Record<string, unknown>, Record<string, unknown>, IUpdateOneOptions?]
       >(),
     };
+    hotelRegistryEntryModel.deleteOne.mockReturnValue({
+      exec: jest.fn<Promise<unknown>, []>().mockResolvedValue({}),
+    });
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -263,6 +268,140 @@ describe('HotelRegistryEntriesService', () => {
       },
     );
     expect(result.issues).toEqual([]);
+  });
+
+  it('restores a numeric name suffix from classRaw before building registry identity', async () => {
+    const rawHotel = {
+      ...rawHotelFixture,
+      beds: 8,
+      classRaw: '3',
+      establishmentType: 'TRADITIONAL HOUSES - HOTELS',
+      name: 'PALATAKIA',
+      nameNormalized: 'PALATAKIA',
+      operatorName: 'Corpaz Ltd',
+      postcode: '7714',
+      rooms: 4,
+    };
+    const upsertedEntry = buildRegistryEntry({
+      name: {
+        baseName: 'PALATAKIA',
+        normalized: 'PALATAKIA 3',
+        original: 'PALATAKIA 3',
+        suffix: '3',
+      },
+    });
+
+    mockFindOneResults(null, upsertedEntry);
+    mockUpdateOneResult();
+
+    await service.upsertFromRawHotel(rawHotel);
+
+    expect(hotelRegistryEntryModel.findOne).toHaveBeenCalledWith({
+      registryKey:
+        'rkv1|PALATAKIA 3|TRADITIONAL HOUSES HOTELS|PAFOS|PAFOS|7714|1 EXAMPLE STREET',
+    });
+    expect(hotelRegistryEntryModel.updateOne).toHaveBeenCalledWith(
+      {
+        registryKey:
+          'rkv1|PALATAKIA 3|TRADITIONAL HOUSES HOTELS|PAFOS|PAFOS|7714|1 EXAMPLE STREET',
+      },
+      expect.objectContaining({
+        $set: expect.objectContaining({
+          name: {
+            baseName: 'PALATAKIA',
+            normalized: 'PALATAKIA 3',
+            original: 'PALATAKIA 3',
+            suffix: '3',
+          },
+        }),
+      }),
+      {
+        upsert: true,
+      },
+    );
+  });
+
+  it('maps PALATAKIA technical raw duplicates to two registry identities', async () => {
+    const rawSecondWithSuffix = {
+      ...rawHotelFixture,
+      beds: 10,
+      classRaw: 'N/A',
+      establishmentType: 'TRADITIONAL HOUSES - APARTMENTS',
+      name: 'PALATAKIA 2',
+      nameNormalized: 'PALATAKIA 2',
+      operatorName: 'Corpaz Ltd',
+      postcode: '7714',
+      rooms: 5,
+    };
+    const rawSecondWithNumericClass = {
+      ...rawSecondWithSuffix,
+      classRaw: '2',
+      name: 'PALATAKIA',
+      nameNormalized: 'PALATAKIA',
+    };
+    const rawThirdWithNumericClass = {
+      ...rawHotelFixture,
+      beds: 8,
+      classRaw: '3',
+      establishmentType: 'TRADITIONAL HOUSES - HOTELS',
+      name: 'PALATAKIA',
+      nameNormalized: 'PALATAKIA',
+      operatorName: 'Corpaz Ltd',
+      postcode: '7714',
+      rooms: 4,
+    };
+    const secondEntry = buildRegistryEntry({
+      name: {
+        baseName: 'PALATAKIA',
+        normalized: 'PALATAKIA 2',
+        original: 'PALATAKIA 2',
+        suffix: '2',
+      },
+    });
+    const thirdEntry = buildRegistryEntry({
+      name: {
+        baseName: 'PALATAKIA',
+        normalized: 'PALATAKIA 3',
+        original: 'PALATAKIA 3',
+        suffix: '3',
+      },
+    });
+
+    mockFindOneResultSequence([
+      null,
+      null,
+      secondEntry,
+      null,
+      null,
+      secondEntry,
+      null,
+      null,
+      thirdEntry,
+    ]);
+    mockUpdateOneResult();
+
+    await service.upsertFromRawHotel(rawSecondWithSuffix);
+    await service.upsertFromRawHotel(rawSecondWithNumericClass);
+    await service.upsertFromRawHotel(rawThirdWithNumericClass);
+
+    const registryKeys = hotelRegistryEntryModel.updateOne.mock.calls.map(
+      ([filter]) => filter.registryKey,
+    );
+
+    expect([...new Set(registryKeys)]).toEqual([
+      'rkv1|PALATAKIA 2|TRADITIONAL HOUSES APARTMENTS|PAFOS|PAFOS|7714|1 EXAMPLE STREET',
+      'rkv1|PALATAKIA 3|TRADITIONAL HOUSES HOTELS|PAFOS|PAFOS|7714|1 EXAMPLE STREET',
+    ]);
+    expect(hotelRegistryEntryModel.deleteOne).toHaveBeenCalledWith({
+      'name.suffix': null,
+      registryKey:
+        'rkv1|PALATAKIA|TRADITIONAL HOUSES APARTMENTS|PAFOS|PAFOS|7714|1 EXAMPLE STREET',
+    });
+    expect(hotelRegistryEntryModel.deleteOne).toHaveBeenCalledWith({
+      'name.suffix': null,
+      registryKey:
+        'rkv1|PALATAKIA|TRADITIONAL HOUSES HOTELS|PAFOS|PAFOS|7714|1 EXAMPLE STREET',
+    });
   });
 
   it('claims pending registry entries using Mongoose 9 returnDocument option', async () => {

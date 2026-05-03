@@ -5,6 +5,7 @@ import { HOTEL_PROCESSING_STATUS } from '../hotel-processing/constants/hotel-pro
 import { IRawHotel } from '../raw-hotels/types/raw-hotel.interface';
 import { normalizeHotelCapacity } from '../raw-hotels/utils/hotel-capacity-normalization.util';
 import { normalizeHotelLocation } from '../raw-hotels/utils/hotel-location-normalization.util';
+import { normalizeHotelNameAndClass } from '../raw-hotels/utils/hotel-name-class-normalization.util';
 import { HOTEL_REGISTRY_ENTRY_MODEL_NAME } from './constants/hotel-registry-entry-model-name.constant';
 import { HOTEL_REGISTRY_ENTRY_STATUS } from './constants/hotel-registry-entry-status.enum';
 import { IHotelCapacity } from './types/hotel-capacity.interface';
@@ -55,9 +56,13 @@ export class HotelRegistryEntriesService {
     rawHotel: IRawHotel,
   ): Promise<IUpsertHotelRegistryEntryResult> {
     const rawHotelFields = this.toRawHotelFields(rawHotel);
+    const nameClass = normalizeHotelNameAndClass(rawHotelFields);
     const normalizedRawHotel = {
       ...rawHotelFields,
       ...normalizeHotelLocation(rawHotelFields),
+      classRaw: nameClass.classRaw,
+      name: nameClass.name,
+      nameNormalized: nameClass.nameNormalized,
     };
     const registryKey = makeHotelRegistryKey({
       address: normalizedRawHotel.address,
@@ -67,6 +72,11 @@ export class HotelRegistryEntriesService {
       postcode: normalizedRawHotel.postcode,
       region: normalizedRawHotel.region,
     });
+    await this.deleteObsoleteNumericClassRegistryEntry(
+      rawHotelFields,
+      normalizedRawHotel,
+      registryKey,
+    );
     const existingEntry = await this.hotelRegistryEntryModel
       .findOne({
         registryKey,
@@ -569,6 +579,36 @@ export class HotelRegistryEntriesService {
             $or: contactFilters,
           },
         ],
+      })
+      .exec();
+  }
+
+  private async deleteObsoleteNumericClassRegistryEntry(
+    rawHotel: IRawHotel,
+    normalizedRawHotel: IRawHotel,
+    registryKey: string,
+  ): Promise<void> {
+    if (rawHotel.nameNormalized === normalizedRawHotel.nameNormalized) {
+      return;
+    }
+
+    const obsoleteRegistryKey = makeHotelRegistryKey({
+      address: normalizedRawHotel.address,
+      establishmentType: normalizedRawHotel.establishmentType,
+      locality: normalizedRawHotel.locality,
+      nameNormalized: rawHotel.nameNormalized,
+      postcode: normalizedRawHotel.postcode,
+      region: normalizedRawHotel.region,
+    });
+
+    if (obsoleteRegistryKey === registryKey) {
+      return;
+    }
+
+    await this.hotelRegistryEntryModel
+      .deleteOne({
+        'name.suffix': null,
+        registryKey: obsoleteRegistryKey,
       })
       .exec();
   }

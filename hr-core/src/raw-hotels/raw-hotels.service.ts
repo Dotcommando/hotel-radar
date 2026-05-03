@@ -11,9 +11,9 @@ import {
   makeAddressMergeHotelDedupeKey,
   makeNameMatchKey,
   makeStrictHotelDedupeKey,
-  normalizeHotelName,
 } from './utils/hotel-identity.util';
 import { normalizeHotelCapacity } from './utils/hotel-capacity-normalization.util';
+import { normalizeHotelNameAndClass } from './utils/hotel-name-class-normalization.util';
 
 interface IPersistedRawHotelFields extends ICreateRawHotel {
   addressMergeDedupeKey: string;
@@ -107,12 +107,16 @@ export class RawHotelsService {
       beds: rawHotel.beds,
       rooms: rawHotel.rooms,
     });
+    const nameClass = normalizeHotelNameAndClass(rawHotel);
     const normalizedRawHotel = {
       ...rawHotel,
       beds: capacity.beds,
+      classRaw: nameClass.classRaw,
+      name: nameClass.name,
+      nameNormalized: nameClass.nameNormalized,
       rooms: capacity.rooms,
     };
-    const nameNormalized = normalizeHotelName(rawHotel.name);
+    const nameNormalized = normalizedRawHotel.nameNormalized;
 
     return {
       ...normalizedRawHotel,

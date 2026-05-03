@@ -243,6 +243,43 @@ describe('RawHotelsService', () => {
     expect(result).toEqual([rawHotelFixture]);
   });
 
+  it('normalizes numeric classRaw as a name suffix before saving raw hotels', async () => {
+    const rawHotel: ICreateRawHotel = {
+      ...createRawHotelFixture,
+      beds: 8,
+      classRaw: '3',
+      establishmentType: 'TRADITIONAL HOUSES - HOTELS',
+      name: 'PALATAKIA',
+      nameNormalized: 'PALATAKIA',
+      rooms: 4,
+    };
+
+    rawHotelModel.insertMany.mockResolvedValue([
+      {
+        ...rawHotelFixture,
+        ...rawHotel,
+        classRaw: null,
+        name: 'PALATAKIA 3',
+        nameNormalized: 'PALATAKIA 3',
+      },
+    ]);
+
+    await service.createMany([rawHotel]);
+
+    expect(rawHotelModel.insertMany).toHaveBeenCalledWith(
+      [
+        expect.objectContaining({
+          classRaw: null,
+          name: 'PALATAKIA 3',
+          nameMatchKey: 'PALATAKIA 3',
+          nameNormalized: 'PALATAKIA 3',
+          strictHotelDedupeKey: expect.stringContaining('PALATAKIA 3'),
+        }),
+      ],
+      { ordered: true },
+    );
+  });
+
   it('returns an empty array when createMany receives no records', async () => {
     const result = await service.createMany([]);
 

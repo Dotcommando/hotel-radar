@@ -1,6 +1,7 @@
 import {
   makeHotelRegistryKey,
   normalizeRegistryDomains,
+  normalizeRegistryName,
   splitAndNormalizeRegistryPhones,
   splitRegistryNameSuffix,
 } from './hotel-registry-normalization.util';
@@ -61,6 +62,20 @@ describe('hotelRegistryNormalizationUtil', () => {
       suffix: null,
     });
   });
+
+  it.each([
+    ['PALATAKIA 2 N/A', 'PALATAKIA', '2'],
+    ['PALATAKIA 3 N/A', 'PALATAKIA', '3'],
+    ['THALASSINES 10 N/A', 'THALASSINES', '10'],
+  ])(
+    'keeps numeric name suffix before a real class marker in %s',
+    (rawName, baseName, suffix) => {
+      expect(splitRegistryNameSuffix(normalizeRegistryName(rawName))).toEqual({
+        baseName,
+        suffix,
+      });
+    },
+  );
 
   it('splits comma-separated phone strings and normalizes domains', () => {
     expect(
