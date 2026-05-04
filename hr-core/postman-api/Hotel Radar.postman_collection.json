@@ -101,6 +101,68 @@
       "response": []
     },
     {
+      "name": "Rollback to Stage 2",
+      "request": {
+        "auth": {
+          "type": "noauth"
+        },
+        "method": "POST",
+        "header": [],
+        "body": {
+          "mode": "raw",
+          "raw": "",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "{{hrCoreBaseUrl}}/hotel-processing/rollback/stage-2",
+          "host": [
+            "{{hrCoreBaseUrl}}"
+          ],
+          "path": [
+            "hotel-processing",
+            "rollback",
+            "stage-2"
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Rollback to Stage 1",
+      "request": {
+        "auth": {
+          "type": "noauth"
+        },
+        "method": "POST",
+        "header": [],
+        "body": {
+          "mode": "raw",
+          "raw": "",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "{{hrCoreBaseUrl}}/hotel-processing/rollback/stage-1",
+          "host": [
+            "{{hrCoreBaseUrl}}"
+          ],
+          "path": [
+            "hotel-processing",
+            "rollback",
+            "stage-1"
+          ]
+        }
+      },
+      "response": []
+    },
+    {
       "name": "Stage 1. Receive and parse PDF from www.gov.cy",
       "event": [
         {

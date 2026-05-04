@@ -10,11 +10,15 @@ import {
 } from '@nestjs/common';
 import { HotelProcessingActiveRunExistsError } from './errors/hotel-processing-active-run-exists.error';
 import { HotelProcessingNoPendingSourceDocumentsError } from './errors/hotel-processing-no-pending-source-documents.error';
+import { HotelProcessingNoRollbackRunFoundError } from './errors/hotel-processing-no-rollback-run-found.error';
 import { HotelProcessingPreviousStageNotCompletedError } from './errors/hotel-processing-previous-stage-not-completed.error';
 import { HotelProcessingRunNotFoundError } from './errors/hotel-processing-run-not-found.error';
+import { HOTEL_PROCESSING_ROLLBACK_TARGET_STAGE } from './constants/hotel-processing-rollback-target-stage.enum';
 import { IGetHotelProcessingRunResult } from './types/get-hotel-processing-run-result.interface';
+import { IHotelProcessingRollbackResult } from './types/hotel-processing-rollback-result.interface';
 import { IStartHotelProcessingRunResult } from './types/start-hotel-processing-run-result.interface';
 import { GetHotelProcessingRunUseCase } from './use-cases/get-hotel-processing-run.use-case';
+import { RollbackHotelProcessingUseCase } from './use-cases/rollback-hotel-processing.use-case';
 import { StartRawToRegistryRunUseCase } from './use-cases/start-raw-to-registry-run.use-case';
 import { StartRegistryToCandidatesRunUseCase } from './use-cases/start-registry-to-candidates-run.use-case';
 
@@ -24,6 +28,7 @@ export class HotelProcessingController {
     private readonly startRawToRegistryRunUseCase: StartRawToRegistryRunUseCase,
     private readonly startRegistryToCandidatesRunUseCase: StartRegistryToCandidatesRunUseCase,
     private readonly getHotelProcessingRunUseCase: GetHotelProcessingRunUseCase,
+    private readonly rollbackHotelProcessingUseCase: RollbackHotelProcessingUseCase,
   ) {}
 
   @Post('runs/raw-to-registry')
@@ -98,6 +103,48 @@ export class HotelProcessingController {
       if (error instanceof HotelProcessingRunNotFoundError) {
         throw new NotFoundException({
           code: 'RUN_NOT_FOUND',
+          message: error.message,
+          ok: false,
+        });
+      }
+
+      throw error;
+    }
+  }
+
+  @Post('rollback/stage-2')
+  @HttpCode(HttpStatus.OK)
+  async rollbackToStage2(): Promise<IHotelProcessingRollbackResult> {
+    return this.rollbackToTargetStage(
+      HOTEL_PROCESSING_ROLLBACK_TARGET_STAGE.STAGE_2,
+    );
+  }
+
+  @Post('rollback/stage-1')
+  @HttpCode(HttpStatus.OK)
+  async rollbackToStage1(): Promise<IHotelProcessingRollbackResult> {
+    return this.rollbackToTargetStage(
+      HOTEL_PROCESSING_ROLLBACK_TARGET_STAGE.STAGE_1,
+    );
+  }
+
+  private async rollbackToTargetStage(
+    targetStage: HOTEL_PROCESSING_ROLLBACK_TARGET_STAGE,
+  ): Promise<IHotelProcessingRollbackResult> {
+    try {
+      return await this.rollbackHotelProcessingUseCase.execute(targetStage);
+    } catch (error) {
+      if (error instanceof HotelProcessingActiveRunExistsError) {
+        throw new ConflictException({
+          code: 'ACTIVE_RUN_EXISTS',
+          message: error.message,
+          ok: false,
+        });
+      }
+
+      if (error instanceof HotelProcessingNoRollbackRunFoundError) {
+        throw new ConflictException({
+          code: 'NO_ROLLBACK_RUN_FOUND',
           message: error.message,
           ok: false,
         });

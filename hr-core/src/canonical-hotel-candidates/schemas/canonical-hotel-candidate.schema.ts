@@ -62,6 +62,24 @@ const hotelContactsSchema = new Schema(
   },
 );
 
+const hotelCapacitySchema = new Schema(
+  {
+    beds: {
+      default: null,
+      required: false,
+      type: Number,
+    },
+    rooms: {
+      default: null,
+      required: false,
+      type: Number,
+    },
+  },
+  {
+    _id: false,
+  },
+);
+
 const canonicalHotelCapacitySchema = new Schema(
   {
     beds: {
@@ -87,24 +105,34 @@ const canonicalHotelCapacitySchema = new Schema(
 
 const canonicalHotelComponentSchema = new Schema(
   {
-    beds: {
-      default: null,
-      required: false,
-      type: Number,
+    capacity: {
+      required: true,
+      type: hotelCapacitySchema,
+    },
+    componentKey: {
+      required: true,
+      type: String,
+    },
+    contacts: {
+      required: true,
+      type: hotelContactsSchema,
     },
     establishmentType: {
       default: null,
       required: false,
       type: String,
     },
+    location: {
+      required: true,
+      type: hotelLocationSchema,
+    },
     name: {
       required: true,
       type: String,
     },
-    rooms: {
-      default: null,
-      required: false,
-      type: Number,
+    normalizedName: {
+      required: true,
+      type: String,
     },
   },
   {

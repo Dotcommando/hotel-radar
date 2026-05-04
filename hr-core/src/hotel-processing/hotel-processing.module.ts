@@ -12,6 +12,7 @@ import { HotelProcessingQueueService } from './hotel-processing-queue.service';
 import { HotelProcessingRunsService } from './hotel-processing-runs.service';
 import { hotelProcessingRunSchema } from './schemas/hotel-processing-run.schema';
 import { GetHotelProcessingRunUseCase } from './use-cases/get-hotel-processing-run.use-case';
+import { RollbackHotelProcessingUseCase } from './use-cases/rollback-hotel-processing.use-case';
 import { StartRawToRegistryRunUseCase } from './use-cases/start-raw-to-registry-run.use-case';
 import { StartRegistryToCandidatesRunUseCase } from './use-cases/start-registry-to-candidates-run.use-case';
 
@@ -35,6 +36,7 @@ import { StartRegistryToCandidatesRunUseCase } from './use-cases/start-registry-
     HotelProcessingBatchWorker,
     HotelProcessingQueueService,
     HotelProcessingRunsService,
+    RollbackHotelProcessingUseCase,
     StartRawToRegistryRunUseCase,
     StartRegistryToCandidatesRunUseCase,
   ],

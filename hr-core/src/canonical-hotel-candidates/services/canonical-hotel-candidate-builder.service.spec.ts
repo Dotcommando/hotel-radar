@@ -7,6 +7,52 @@ import { CANONICAL_HOTEL_CANDIDATE_STATUS } from '../constants/canonical-hotel-c
 import { CANONICAL_HOTEL_KIND } from '../constants/canonical-hotel-kind.enum';
 import { CanonicalHotelCandidateBuilderService } from './canonical-hotel-candidate-builder.service';
 
+function normalizeExpectedText(value: string | null): string {
+  return (
+    value
+      ?.normalize('NFKC')
+      .replace(/[.,;:()[\]{}]/g, ' ')
+      .replace(/[/\\]/g, ' ')
+      .replace(/[-–—]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .toUpperCase() ?? ''
+  );
+}
+
+function normalizeExpectedAddress(value: string | null): string {
+  return normalizeExpectedText(value)
+    .replace(/\bSTR\b/gu, 'STREET')
+    .replace(/\bST\b/gu, 'STREET')
+    .replace(/\bAVE\b/gu, 'AVENUE')
+    .replace(/\bAV\b/gu, 'AVENUE');
+}
+
+function buildExpectedComponentKey(entry: IHotelRegistryEntry): string {
+  return [
+    'component-v1',
+    entry.name.normalized,
+    entry.establishmentType ?? '',
+    entry.location.postcode ?? '',
+    normalizeExpectedAddress(entry.location.address),
+  ].join('|');
+}
+
+function buildExpectedComponent(
+  entry: IHotelRegistryEntry,
+  name = entry.name.original,
+) {
+  return {
+    capacity: entry.capacity,
+    componentKey: buildExpectedComponentKey(entry),
+    contacts: entry.contacts,
+    establishmentType: entry.establishmentType,
+    location: entry.location,
+    name,
+    normalizedName: entry.name.normalized,
+  };
+}
+
 function buildRegistryEntry(
   overrides: Partial<IHotelRegistryEntry>,
 ): IHotelRegistryEntry {
@@ -166,14 +212,7 @@ describe('CanonicalHotelCandidateBuilderService', () => {
         mode: CANONICAL_HOTEL_CAPACITY_MODE.SINGLE_COMPONENT,
         rooms: 5,
       },
-      components: [
-        {
-          beds: 10,
-          establishmentType: 'TOURIST VILLAS',
-          name: 'ANASSA',
-          rooms: 5,
-        },
-      ],
+      components: [buildExpectedComponent(entry)],
       contacts: entry.contacts,
       kind: CANONICAL_HOTEL_KIND.SINGLE_PROPERTY,
       location: entry.location,
@@ -231,18 +270,8 @@ describe('CanonicalHotelCandidateBuilderService', () => {
       rooms: 2,
     });
     expect(result.components).toEqual([
-      {
-        beds: 6,
-        establishmentType: 'TOURIST VILLAS',
-        name: 'THALASSINES 10',
-        rooms: 1,
-      },
-      {
-        beds: 8,
-        establishmentType: 'TOURIST VILLAS',
-        name: 'THALASSINES 11',
-        rooms: 1,
-      },
+      buildExpectedComponent(firstEntry),
+      buildExpectedComponent(secondEntry),
     ]);
   });
 
@@ -421,9 +450,7 @@ describe('CanonicalHotelCandidateBuilderService', () => {
     const singleCandidate = service.buildFromRegistryEntries([baseEntry]);
     const groupCandidate = service.buildFromRegistryEntries(numericEntries);
 
-    expect(singleCandidate.status).toBe(
-      CANONICAL_HOTEL_CANDIDATE_STATUS.READY,
-    );
+    expect(singleCandidate.status).toBe(CANONICAL_HOTEL_CANDIDATE_STATUS.READY);
     expect(singleCandidate.kind).toBe(CANONICAL_HOTEL_KIND.SINGLE_PROPERTY);
     expect(singleCandidate.build).toEqual({
       issues: [],
@@ -441,9 +468,7 @@ describe('CanonicalHotelCandidateBuilderService', () => {
       'reservations@thalassines.com',
     ]);
 
-    expect(groupCandidate.status).toBe(
-      CANONICAL_HOTEL_CANDIDATE_STATUS.READY,
-    );
+    expect(groupCandidate.status).toBe(CANONICAL_HOTEL_CANDIDATE_STATUS.READY);
     expect(groupCandidate.kind).toBe(CANONICAL_HOTEL_KIND.PROPERTY_COMPLEX);
     expect(groupCandidate.build.rule).toBe('numeric_suffix_group');
     expect(groupCandidate.capacity).toEqual({
@@ -476,7 +501,8 @@ describe('CanonicalHotelCandidateBuilderService', () => {
     ]);
     expect(
       groupCandidate.components.every(
-        (component) => component.rooms === 1 && component.beds === 6,
+        (component) =>
+          component.capacity.rooms === 1 && component.capacity.beds === 6,
       ),
     ).toBe(true);
   });
@@ -640,18 +666,8 @@ describe('CanonicalHotelCandidateBuilderService', () => {
       rooms: 9,
     });
     expect(result.components).toEqual([
-      {
-        beds: 10,
-        establishmentType: 'TRADITIONAL HOUSES - APARTMENTS',
-        name: 'PALATAKIA 2',
-        rooms: 5,
-      },
-      {
-        beds: 8,
-        establishmentType: 'TRADITIONAL HOUSES - HOTELS',
-        name: 'PALATAKIA 3',
-        rooms: 4,
-      },
+      buildExpectedComponent(suffixEntry),
+      buildExpectedComponent(missingSuffixEntry, 'PALATAKIA 3'),
     ]);
   });
 
@@ -764,32 +780,12 @@ describe('CanonicalHotelCandidateBuilderService', () => {
       postcode: '7731',
     });
     expect(result.contacts.domains).toEqual(['agrotourismincyprus.com']);
-    expect(result.contacts.emails).toEqual([
-      'info@agrotourismincyprus.com',
-    ]);
-    expect(result.contacts.phones).toEqual([
-      '+35724322089',
-      '+35724534630',
-    ]);
+    expect(result.contacts.emails).toEqual(['info@agrotourismincyprus.com']);
+    expect(result.contacts.phones).toEqual(['+35724322089', '+35724534630']);
     expect(result.components).toEqual([
-      {
-        beds: 2,
-        establishmentType: 'TRADITIONAL HOUSES - APARTMENTS',
-        name: 'LITO',
-        rooms: 1,
-      },
-      {
-        beds: 4,
-        establishmentType: 'TRADITIONAL HOUSES - APARTMENTS',
-        name: 'LITO 2',
-        rooms: 2,
-      },
-      {
-        beds: 2,
-        establishmentType: 'TRADITIONAL HOUSES - APARTMENTS',
-        name: 'LITO 3',
-        rooms: 1,
-      },
+      buildExpectedComponent(baseEntry),
+      buildExpectedComponent(secondEntry),
+      buildExpectedComponent(thirdEntry),
     ]);
   });
 
@@ -1141,7 +1137,10 @@ describe('CanonicalHotelCandidateBuilderService', () => {
       rooms: 154,
     });
     expect(result.location).toEqual(hotelEntry.location);
-    expect(result.components).toHaveLength(2);
+    expect(result.components).toEqual([
+      buildExpectedComponent(apartmentsEntry),
+      buildExpectedComponent(hotelEntry),
+    ]);
   });
 
   it('groups same-name multi-type entries when operators differ but contacts and location match', () => {
@@ -1438,14 +1437,7 @@ describe('CanonicalHotelCandidateBuilderService', () => {
       mode: CANONICAL_HOTEL_CAPACITY_MODE.SINGLE_COMPONENT,
       rooms: 9,
     });
-    expect(result.components).toEqual([
-      {
-        beds: 10,
-        establishmentType: 'HOTELS WITHOUT STAR',
-        name: 'KASTALIA',
-        rooms: 9,
-      },
-    ]);
+    expect(result.components).toEqual([buildExpectedComponent(fullerEntry)]);
     expect(result.location).toEqual(fullerEntry.location);
   });
 

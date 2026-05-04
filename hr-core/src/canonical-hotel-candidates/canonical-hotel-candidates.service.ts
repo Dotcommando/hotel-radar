@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { Model } from 'mongoose';
+import { Model, Types } from 'mongoose';
 import { IHotelRegistryEntry } from '../hotel-registry-entries/types/hotel-registry-entry.interface';
 import { CANONICAL_HOTEL_CANDIDATE_MODEL_NAME } from './constants/canonical-hotel-candidate-model-name.constant';
 import { ICanonicalHotelCandidate } from './types/canonical-hotel-candidate.interface';
@@ -40,6 +40,22 @@ export class CanonicalHotelCandidatesService {
       );
 
     return this.upsertCandidateFields(candidateFields);
+  }
+
+  async deleteManyByIds(ids: Types.ObjectId[]): Promise<number> {
+    if (ids.length === 0) {
+      return 0;
+    }
+
+    const result = await this.canonicalHotelCandidateModel
+      .deleteMany({
+        _id: {
+          $in: ids,
+        },
+      })
+      .exec();
+
+    return result.deletedCount ?? 0;
   }
 
   private async upsertCandidateFields(

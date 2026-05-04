@@ -22,6 +22,10 @@ interface IPersistedRawHotelFields extends ICreateRawHotel {
   strictHotelDedupeKey: string;
 }
 
+interface IProcessingRunIdAggregationResult {
+  _id: string;
+}
+
 const SHARED_CHAIN_CONTACT_DOMAINS = new Set([
   'atlanticahotels.com',
   'kanikahotels.com',
@@ -722,6 +726,84 @@ export class RawHotelsService {
         'processing.status': status,
       })
       .exec();
+  }
+
+  async findProcessingRunIds(): Promise<(string | null)[]> {
+    const rows = await this.rawHotelModel
+      .aggregate<IProcessingRunIdAggregationResult>([
+        {
+          $match: {
+            'processing.runId': {
+              $type: 'string',
+            },
+          },
+        },
+        {
+          $group: {
+            _id: '$processing.runId',
+          },
+        },
+      ])
+      .exec();
+
+    return rows.map(({ _id }) => _id);
+  }
+
+  async countByProcessingRunId(runId: string): Promise<number> {
+    return this.rawHotelModel
+      .countDocuments({
+        'processing.runId': runId,
+      })
+      .exec();
+  }
+
+  async readRollbackBatchByProcessingRunId(
+    runId: string,
+    limit: number,
+  ): Promise<Pick<IPersistedRawHotel, '_id' | 'processing'>[]> {
+    return this.rawHotelModel
+      .find({
+        'processing.runId': runId,
+      })
+      .select({
+        _id: 1,
+        processing: 1,
+      })
+      .sort({
+        _id: 1,
+      })
+      .limit(limit)
+      .exec();
+  }
+
+  async resetProcessingByIds(ids: Types.ObjectId[]): Promise<number> {
+    if (ids.length === 0) {
+      return 0;
+    }
+
+    const result = await this.rawHotelModel
+      .updateMany(
+        {
+          _id: {
+            $in: ids,
+          },
+        },
+        {
+          $set: {
+            processing: {
+              claimedAt: null,
+              error: null,
+              hotelRegistryEntryId: null,
+              processedAt: null,
+              runId: null,
+              status: HOTEL_PROCESSING_STATUS.PENDING,
+            },
+          },
+        },
+      )
+      .exec();
+
+    return result.modifiedCount;
   }
 
   async claimPendingForRun(

@@ -29,6 +29,10 @@ interface IRawHotelDocumentLike extends IRawHotel {
   toObject: () => IRawHotel;
 }
 
+interface IProcessingRunIdAggregationResult {
+  _id: string;
+}
+
 export interface IShadowAggregateNumericSuffixGroup {
   numberedEntries: IHotelRegistryEntry[];
   shadowAggregateEntries: IHotelRegistryEntry[];
@@ -197,6 +201,100 @@ export class HotelRegistryEntriesService {
         'processing.status': status,
       })
       .exec();
+  }
+
+  async findProcessingRunIds(): Promise<(string | null)[]> {
+    const rows = await this.hotelRegistryEntryModel
+      .aggregate<IProcessingRunIdAggregationResult>([
+        {
+          $match: {
+            'processing.runId': {
+              $type: 'string',
+            },
+          },
+        },
+        {
+          $group: {
+            _id: '$processing.runId',
+          },
+        },
+      ])
+      .exec();
+
+    return rows.map(({ _id }) => _id);
+  }
+
+  async countByProcessingRunId(runId: string): Promise<number> {
+    return this.hotelRegistryEntryModel
+      .countDocuments({
+        'processing.runId': runId,
+      })
+      .exec();
+  }
+
+  async readRollbackBatchByProcessingRunId(
+    runId: string,
+    limit: number,
+  ): Promise<Pick<IHotelRegistryEntry, '_id' | 'processing'>[]> {
+    return this.hotelRegistryEntryModel
+      .find({
+        'processing.runId': runId,
+      })
+      .select({
+        _id: 1,
+        processing: 1,
+      })
+      .sort({
+        _id: 1,
+      })
+      .limit(limit)
+      .exec();
+  }
+
+  async resetProcessingByIds(ids: Types.ObjectId[]): Promise<number> {
+    if (ids.length === 0) {
+      return 0;
+    }
+
+    const result = await this.hotelRegistryEntryModel
+      .updateMany(
+        {
+          _id: {
+            $in: ids,
+          },
+        },
+        {
+          $set: {
+            processing: {
+              canonicalHotelCandidateId: null,
+              claimedAt: null,
+              error: null,
+              processedAt: null,
+              runId: null,
+              status: HOTEL_PROCESSING_STATUS.PENDING,
+            },
+          },
+        },
+      )
+      .exec();
+
+    return result.modifiedCount;
+  }
+
+  async deleteManyByIds(ids: Types.ObjectId[]): Promise<number> {
+    if (ids.length === 0) {
+      return 0;
+    }
+
+    const result = await this.hotelRegistryEntryModel
+      .deleteMany({
+        _id: {
+          $in: ids,
+        },
+      })
+      .exec();
+
+    return result.deletedCount ?? 0;
   }
 
   async claimPendingForRun(

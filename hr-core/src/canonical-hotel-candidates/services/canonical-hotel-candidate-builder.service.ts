@@ -7,6 +7,7 @@ import { IHotelRegistryEntry } from '../../hotel-registry-entries/types/hotel-re
 import { CANONICAL_HOTEL_CAPACITY_MODE } from '../constants/canonical-hotel-capacity-mode.enum';
 import { CANONICAL_HOTEL_CANDIDATE_STATUS } from '../constants/canonical-hotel-candidate-status.enum';
 import { CANONICAL_HOTEL_KIND } from '../constants/canonical-hotel-kind.enum';
+import { ICanonicalHotelComponent } from '../types/canonical-hotel-component.interface';
 import { ICreateCanonicalHotelCandidate } from '../types/create-canonical-hotel-candidate.interface';
 
 const SHARED_CHAIN_CONTACT_DOMAINS = new Set([
@@ -47,7 +48,9 @@ export class CanonicalHotelCandidateBuilderService {
     }
 
     if (this.isSafeSameNameSameTypeStrongIdentityCollapseGroup(entries)) {
-      return this.buildSameNameSameTypeStrongIdentityCollapsedCandidate(entries);
+      return this.buildSameNameSameTypeStrongIdentityCollapsedCandidate(
+        entries,
+      );
     }
 
     if (this.isSafeSameNameSameTypeCollapseGroup(entries)) {
@@ -80,6 +83,31 @@ export class CanonicalHotelCandidateBuilderService {
     };
   }
 
+  private buildComponent(
+    entry: IHotelRegistryEntry,
+    name = entry.name.original,
+  ): ICanonicalHotelComponent {
+    return {
+      capacity: entry.capacity,
+      componentKey: this.buildComponentKey(entry),
+      contacts: entry.contacts,
+      establishmentType: entry.establishmentType,
+      location: entry.location,
+      name,
+      normalizedName: entry.name.normalized,
+    };
+  }
+
+  private buildComponentKey(entry: IHotelRegistryEntry): string {
+    return [
+      'component-v1',
+      entry.name.normalized,
+      entry.establishmentType ?? '',
+      entry.location.postcode ?? '',
+      this.normalizeAddressForCompare(entry.location.address),
+    ].join('|');
+  }
+
   private buildSingleCandidate(
     entry: IHotelRegistryEntry,
   ): ICreateCanonicalHotelCandidate {
@@ -96,14 +124,7 @@ export class CanonicalHotelCandidateBuilderService {
         mode: CANONICAL_HOTEL_CAPACITY_MODE.SINGLE_COMPONENT,
         rooms: entry.capacity.rooms,
       },
-      components: [
-        {
-          beds: entry.capacity.beds,
-          establishmentType: entry.establishmentType,
-          name: entry.name.original,
-          rooms: entry.capacity.rooms,
-        },
-      ],
+      components: [this.buildComponent(entry)],
       contacts: entry.contacts,
       kind: CANONICAL_HOTEL_KIND.SINGLE_PROPERTY,
       location: entry.location,
@@ -144,12 +165,7 @@ export class CanonicalHotelCandidateBuilderService {
           sortedEntries.map(({ capacity }) => capacity.rooms),
         ),
       },
-      components: sortedEntries.map((entry) => ({
-        beds: entry.capacity.beds,
-        establishmentType: entry.establishmentType,
-        name: entry.name.original,
-        rooms: entry.capacity.rooms,
-      })),
+      components: sortedEntries.map((entry) => this.buildComponent(entry)),
       contacts: firstEntry.contacts,
       kind: CANONICAL_HOTEL_KIND.PROPERTY_COMPLEX,
       location: this.mergeLocation(bestLocationEntry, sortedEntries),
@@ -187,8 +203,7 @@ export class CanonicalHotelCandidateBuilderService {
         rule: 'numeric_suffix_group',
         ruleVersion: 1,
       },
-      candidateKey:
-        this.buildNumericSuffixGroupCandidateKey(firstSuffixEntry),
+      candidateKey: this.buildNumericSuffixGroupCandidateKey(firstSuffixEntry),
       canonicalName: firstComponentEntry.name.baseName,
       capacity: {
         beds: this.sumNullableNumbers(
@@ -199,12 +214,9 @@ export class CanonicalHotelCandidateBuilderService {
           componentEntries.map(({ entry }) => entry.capacity.rooms),
         ),
       },
-      components: componentEntries.map(({ entry, name }) => ({
-        beds: entry.capacity.beds,
-        establishmentType: entry.establishmentType,
-        name,
-        rooms: entry.capacity.rooms,
-      })),
+      components: componentEntries.map(({ entry, name }) =>
+        this.buildComponent(entry, name),
+      ),
       contacts: this.mergeContacts(sortedEntries),
       kind: CANONICAL_HOTEL_KIND.PROPERTY_COMPLEX,
       location: this.mergeLocation(
@@ -252,12 +264,7 @@ export class CanonicalHotelCandidateBuilderService {
           sortedEntries.map(({ capacity }) => capacity.rooms),
         ),
       },
-      components: sortedEntries.map((entry) => ({
-        beds: entry.capacity.beds,
-        establishmentType: entry.establishmentType,
-        name: entry.name.original,
-        rooms: entry.capacity.rooms,
-      })),
+      components: sortedEntries.map((entry) => this.buildComponent(entry)),
       contacts: this.mergeContacts(sortedEntries),
       kind: CANONICAL_HOTEL_KIND.PROPERTY_COMPLEX,
       location: this.mergeLocation(bestLocationEntry, sortedEntries),
@@ -299,14 +306,7 @@ export class CanonicalHotelCandidateBuilderService {
         mode: CANONICAL_HOTEL_CAPACITY_MODE.SINGLE_COMPONENT,
         rooms: bestEntry.capacity.rooms,
       },
-      components: [
-        {
-          beds: bestEntry.capacity.beds,
-          establishmentType: bestEntry.establishmentType,
-          name: bestEntry.name.original,
-          rooms: bestEntry.capacity.rooms,
-        },
-      ],
+      components: [this.buildComponent(bestEntry)],
       contacts: this.mergeContacts(sortedEntries),
       kind: CANONICAL_HOTEL_KIND.SINGLE_PROPERTY,
       location: this.mergeLocation(bestEntry, sortedEntries),
@@ -346,14 +346,7 @@ export class CanonicalHotelCandidateBuilderService {
         mode: CANONICAL_HOTEL_CAPACITY_MODE.SINGLE_COMPONENT,
         rooms: bestEntry.capacity.rooms,
       },
-      components: [
-        {
-          beds: bestEntry.capacity.beds,
-          establishmentType: bestEntry.establishmentType,
-          name: bestEntry.name.original,
-          rooms: bestEntry.capacity.rooms,
-        },
-      ],
+      components: [this.buildComponent(bestEntry)],
       contacts: this.mergeContacts(sortedEntries),
       kind: CANONICAL_HOTEL_KIND.SINGLE_PROPERTY,
       location: this.mergeLocation(bestEntry, sortedEntries),
@@ -644,10 +637,7 @@ export class CanonicalHotelCandidateBuilderService {
         left.location.postcode,
         right.location.postcode,
       ) ||
-      this.hasConflictingValue(
-        left.location.district,
-        right.location.district,
-      )
+      this.hasConflictingValue(left.location.district, right.location.district)
     ) {
       return false;
     }

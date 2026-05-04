@@ -208,3 +208,4 @@ export const hotelRegistryEntrySchema = new Schema<IHotelRegistryEntry>(
 
 hotelRegistryEntrySchema.index({ registryKey: 1 }, { unique: true });
 hotelRegistryEntrySchema.index({ 'processing.status': 1, _id: 1 });
+hotelRegistryEntrySchema.index({ 'processing.runId': 1 });
