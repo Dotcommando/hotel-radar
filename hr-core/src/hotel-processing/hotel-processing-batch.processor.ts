@@ -1,5 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { CanonicalHotelCandidatesService } from '../canonical-hotel-candidates/canonical-hotel-candidates.service';
+import { CANONICAL_HOTEL_PROCESSING_ACTION } from '../canonical-hotels/constants/canonical-hotel-processing-action.enum';
+import { CanonicalHotelsService } from '../canonical-hotels/services/canonical-hotels.service';
 import { HotelRegistryEntriesService } from '../hotel-registry-entries/hotel-registry-entries.service';
 import { HOTEL_REGISTRY_ENTRY_STATUS } from '../hotel-registry-entries/constants/hotel-registry-entry-status.enum';
 import { RawHotelsService } from '../raw-hotels/raw-hotels.service';
@@ -17,6 +19,7 @@ export class HotelProcessingBatchProcessor {
     private readonly hotelProcessingRunsService: HotelProcessingRunsService,
     private readonly hotelProcessingQueueService: HotelProcessingQueueService,
     private readonly canonicalHotelCandidatesService: CanonicalHotelCandidatesService,
+    private readonly canonicalHotelsService: CanonicalHotelsService,
   ) {}
 
   async processRawToRegistryBatch(
@@ -254,6 +257,114 @@ export class HotelProcessingBatchProcessor {
 
     if (pendingCount > 0) {
       await this.hotelProcessingQueueService.addRegistryToCandidatesBatch({
+        batchNo: data.batchNo + 1,
+        batchSize: data.batchSize,
+        runId: data.runId,
+        stage: data.stage,
+      });
+      return;
+    }
+
+    await this.hotelProcessingRunsService.complete(data.runId);
+  }
+
+  async processCandidatesToCanonicalBatch(
+    data: IHotelProcessingBatchJobData,
+  ): Promise<void> {
+    if (data.stage !== HOTEL_PROCESSING_STAGE.CANDIDATES_TO_CANONICAL) {
+      throw new Error(`Unsupported hotel processing stage: ${data.stage}`);
+    }
+
+    await this.hotelProcessingRunsService.markRunning(data.runId, data.batchNo);
+
+    const candidates =
+      await this.canonicalHotelCandidatesService.claimPendingForRun(
+        data.runId,
+        data.batchSize,
+      );
+    let processed = 0;
+    let reviewRequired = 0;
+    let failed = 0;
+
+    for (const candidate of candidates) {
+      try {
+        const result = await this.canonicalHotelsService.applyCandidate(
+          candidate,
+        );
+
+        if (
+          result.action === CANONICAL_HOTEL_PROCESSING_ACTION.REVIEW_REQUIRED
+        ) {
+          if (result.review === null) {
+            throw new Error('Canonical hotel review result is missing review.');
+          }
+
+          await this.canonicalHotelCandidatesService.markCanonicalReviewRequired(
+            candidate._id,
+            data.runId,
+            result.review,
+          );
+          reviewRequired += 1;
+          continue;
+        }
+
+        if (result.canonicalHotelId === null) {
+          throw new Error(
+            'Canonical hotel processing result is missing canonicalHotelId.',
+          );
+        }
+
+        await this.canonicalHotelCandidatesService.markCanonicalProcessed(
+          candidate._id,
+          result.canonicalHotelId,
+          data.runId,
+          result.action,
+        );
+        processed += 1;
+      } catch (error) {
+        const message =
+          error instanceof Error
+            ? error.message
+            : 'Unknown candidate processing error';
+
+        await this.canonicalHotelCandidatesService.markCanonicalFailed(
+          candidate._id,
+          message,
+        );
+        failed += 1;
+      }
+    }
+
+    if (processed > 0 || failed > 0) {
+      await this.hotelProcessingRunsService.incrementProcessed(
+        data.runId,
+        processed,
+        failed,
+      );
+    }
+
+    if (reviewRequired > 0) {
+      await this.hotelProcessingRunsService.incrementReviewRequired(
+        data.runId,
+        reviewRequired,
+      );
+    }
+
+    if (failed > 0) {
+      await this.hotelProcessingRunsService.fail(
+        data.runId,
+        'One or more canonical hotel candidates failed.',
+      );
+      return;
+    }
+
+    const pendingCount =
+      await this.canonicalHotelCandidatesService.countByProcessingStatus(
+        HOTEL_PROCESSING_STATUS.PENDING,
+      );
+
+    if (pendingCount > 0) {
+      await this.hotelProcessingQueueService.addCandidatesToCanonicalBatch({
         batchNo: data.batchNo + 1,
         batchSize: data.batchSize,
         runId: data.runId,

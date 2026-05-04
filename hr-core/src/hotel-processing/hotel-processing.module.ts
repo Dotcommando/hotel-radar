@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { MongooseModule } from '@nestjs/mongoose';
 import { CanonicalHotelCandidatesModule } from '../canonical-hotel-candidates/canonical-hotel-candidates.module';
+import { CanonicalHotelsModule } from '../canonical-hotels/canonical-hotels.module';
 import { HotelRegistryEntriesModule } from '../hotel-registry-entries/hotel-registry-entries.module';
 import { RawHotelsModule } from '../raw-hotels/raw-hotels.module';
 import { HOTEL_PROCESSING_RUN_MODEL_NAME } from './constants/hotel-processing-run-model-name.constant';
@@ -13,6 +14,7 @@ import { HotelProcessingRunsService } from './hotel-processing-runs.service';
 import { hotelProcessingRunSchema } from './schemas/hotel-processing-run.schema';
 import { GetHotelProcessingRunUseCase } from './use-cases/get-hotel-processing-run.use-case';
 import { RollbackHotelProcessingUseCase } from './use-cases/rollback-hotel-processing.use-case';
+import { StartCandidatesToCanonicalRunUseCase } from './use-cases/start-candidates-to-canonical-run.use-case';
 import { StartRawToRegistryRunUseCase } from './use-cases/start-raw-to-registry-run.use-case';
 import { StartRegistryToCandidatesRunUseCase } from './use-cases/start-registry-to-candidates-run.use-case';
 
@@ -20,6 +22,7 @@ import { StartRegistryToCandidatesRunUseCase } from './use-cases/start-registry-
   controllers: [HotelProcessingController],
   imports: [
     CanonicalHotelCandidatesModule,
+    CanonicalHotelsModule,
     HotelRegistryEntriesModule,
     RawHotelsModule,
     MongooseModule.forFeature([
@@ -37,6 +40,7 @@ import { StartRegistryToCandidatesRunUseCase } from './use-cases/start-registry-
     HotelProcessingQueueService,
     HotelProcessingRunsService,
     RollbackHotelProcessingUseCase,
+    StartCandidatesToCanonicalRunUseCase,
     StartRawToRegistryRunUseCase,
     StartRegistryToCandidatesRunUseCase,
   ],

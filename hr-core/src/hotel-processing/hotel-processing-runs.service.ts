@@ -124,6 +124,27 @@ export class HotelProcessingRunsService {
       .exec();
   }
 
+  async incrementReviewRequired(
+    runId: string,
+    reviewRequired: number,
+  ): Promise<void> {
+    await this.hotelProcessingRunModel
+      .updateOne(
+        {
+          runId,
+        },
+        {
+          $inc: {
+            'stats.reviewRequired': reviewRequired,
+          },
+          $set: {
+            updatedAt: new Date(),
+          },
+        },
+      )
+      .exec();
+  }
+
   async setTotal(runId: string, total: number): Promise<void> {
     await this.hotelProcessingRunModel
       .updateOne(

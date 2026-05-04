@@ -5,6 +5,9 @@ import { CANONICAL_HOTEL_CANDIDATE_STATUS } from '../canonical-hotel-candidates/
 import { CANONICAL_HOTEL_CAPACITY_MODE } from '../canonical-hotel-candidates/constants/canonical-hotel-capacity-mode.enum';
 import { CANONICAL_HOTEL_KIND } from '../canonical-hotel-candidates/constants/canonical-hotel-kind.enum';
 import { ICanonicalHotelCandidate } from '../canonical-hotel-candidates/types/canonical-hotel-candidate.interface';
+import { CANONICAL_HOTEL_PROCESSING_ACTION } from '../canonical-hotels/constants/canonical-hotel-processing-action.enum';
+import { CANONICAL_HOTEL_REVIEW_REASON } from '../canonical-hotels/constants/canonical-hotel-review-reason.enum';
+import { CanonicalHotelsService } from '../canonical-hotels/services/canonical-hotels.service';
 import { HotelRegistryEntriesService } from '../hotel-registry-entries/hotel-registry-entries.service';
 import { HOTEL_REGISTRY_ENTRY_STATUS } from '../hotel-registry-entries/constants/hotel-registry-entry-status.enum';
 import { IHotelRegistryEntry } from '../hotel-registry-entries/types/hotel-registry-entry.interface';
@@ -64,6 +67,7 @@ interface IHotelProcessingRunsServiceMock {
   fail: jest.Mock<Promise<void>, [string, string]>;
   incrementIgnored: jest.Mock<Promise<void>, [string, number]>;
   incrementProcessed: jest.Mock<Promise<void>, [string, number, number]>;
+  incrementReviewRequired: jest.Mock<Promise<void>, [string, number]>;
   markRunning: jest.Mock<Promise<void>, [string, number]>;
 }
 
@@ -80,9 +84,42 @@ interface IHotelProcessingQueueServiceMock {
       },
     ]
   >;
+  addCandidatesToCanonicalBatch: jest.Mock<Promise<void>, [unknown]>;
 }
 
 interface ICanonicalHotelCandidatesServiceMock {
+  claimPendingForRun: jest.Mock<
+    Promise<ICanonicalHotelCandidate[]>,
+    [string, number]
+  >;
+  countByProcessingStatus: jest.Mock<
+    Promise<number>,
+    [HOTEL_PROCESSING_STATUS]
+  >;
+  markCanonicalFailed: jest.Mock<Promise<void>, [Types.ObjectId, string]>;
+  markCanonicalProcessed: jest.Mock<
+    Promise<void>,
+    [
+      Types.ObjectId,
+      Types.ObjectId,
+      string,
+      CANONICAL_HOTEL_PROCESSING_ACTION,
+    ]
+  >;
+  markCanonicalReviewRequired: jest.Mock<
+    Promise<void>,
+    [
+      Types.ObjectId,
+      string,
+      {
+        reason: CANONICAL_HOTEL_REVIEW_REASON;
+        candidateCanonicalHotelIds: Types.ObjectId[];
+        details: string[];
+        createdAt: Date;
+        resolvedAt: Date | null;
+      },
+    ]
+  >;
   upsertFromRegistryEntries: jest.Mock<
     Promise<ICanonicalHotelCandidate>,
     [IHotelRegistryEntry[]]
@@ -90,6 +127,23 @@ interface ICanonicalHotelCandidatesServiceMock {
   upsertAmbiguousBaseCandidate: jest.Mock<
     Promise<ICanonicalHotelCandidate>,
     [IHotelRegistryEntry]
+  >;
+}
+
+interface ICanonicalHotelsServiceMock {
+  applyCandidate: jest.Mock<
+    Promise<{
+      action: CANONICAL_HOTEL_PROCESSING_ACTION;
+      canonicalHotelId: Types.ObjectId | null;
+      review: {
+        reason: CANONICAL_HOTEL_REVIEW_REASON;
+        candidateCanonicalHotelIds: Types.ObjectId[];
+        details: string[];
+        createdAt: Date;
+        resolvedAt: Date | null;
+      } | null;
+    }>,
+    [ICanonicalHotelCandidate]
   >;
 }
 
@@ -171,10 +225,12 @@ function buildCandidate(candidateId: Types.ObjectId): ICanonicalHotelCandidate {
     },
     operator: null,
     processing: {
+      action: null,
       canonicalHotelId: null,
       claimedAt: null,
       error: null,
       processedAt: null,
+      review: null,
       runId: null,
       status: HOTEL_PROCESSING_STATUS.PENDING,
     },
@@ -189,6 +245,7 @@ describe('HotelProcessingBatchProcessor registry-to-candidates', () => {
   let hotelProcessingRunsService: IHotelProcessingRunsServiceMock;
   let hotelProcessingQueueService: IHotelProcessingQueueServiceMock;
   let canonicalHotelCandidatesService: ICanonicalHotelCandidatesServiceMock;
+  let canonicalHotelsService: ICanonicalHotelsServiceMock;
   let processor: HotelProcessingBatchProcessor;
 
   beforeEach(async () => {
@@ -212,15 +269,25 @@ describe('HotelProcessingBatchProcessor registry-to-candidates', () => {
       fail: jest.fn(),
       incrementIgnored: jest.fn(),
       incrementProcessed: jest.fn(),
+      incrementReviewRequired: jest.fn(),
       markRunning: jest.fn(),
     };
     hotelProcessingQueueService = {
+      addCandidatesToCanonicalBatch: jest.fn(),
       addRawToRegistryBatch: jest.fn(),
       addRegistryToCandidatesBatch: jest.fn(),
     };
     canonicalHotelCandidatesService = {
+      claimPendingForRun: jest.fn(),
+      countByProcessingStatus: jest.fn(),
+      markCanonicalFailed: jest.fn(),
+      markCanonicalProcessed: jest.fn(),
+      markCanonicalReviewRequired: jest.fn(),
       upsertAmbiguousBaseCandidate: jest.fn(),
       upsertFromRegistryEntries: jest.fn(),
+    };
+    canonicalHotelsService = {
+      applyCandidate: jest.fn(),
     };
     hotelRegistryEntriesService.readShadowAggregateNumericSuffixGroup.mockResolvedValue(
       null,
@@ -247,6 +314,10 @@ describe('HotelProcessingBatchProcessor registry-to-candidates', () => {
         {
           provide: CanonicalHotelCandidatesService,
           useValue: canonicalHotelCandidatesService,
+        },
+        {
+          provide: CanonicalHotelsService,
+          useValue: canonicalHotelsService,
         },
       ],
     }).compile();
@@ -785,5 +856,86 @@ describe('HotelProcessingBatchProcessor registry-to-candidates', () => {
     expect(
       canonicalHotelCandidatesService.upsertAmbiguousBaseCandidate,
     ).not.toHaveBeenCalled();
+  });
+
+  it('processes candidates into canonical hotels and completes when no pending candidates remain', async () => {
+    const candidate = buildCandidate(new Types.ObjectId());
+    const canonicalHotelId = new Types.ObjectId();
+
+    canonicalHotelCandidatesService.claimPendingForRun.mockResolvedValue([
+      candidate,
+    ]);
+    canonicalHotelsService.applyCandidate.mockResolvedValue({
+      action: CANONICAL_HOTEL_PROCESSING_ACTION.CREATED,
+      canonicalHotelId,
+      review: null,
+    });
+    canonicalHotelCandidatesService.countByProcessingStatus.mockResolvedValue(
+      0,
+    );
+
+    await processor.processCandidatesToCanonicalBatch({
+      batchNo: 1,
+      batchSize: 50,
+      runId: 'run-1',
+      stage: HOTEL_PROCESSING_STAGE.CANDIDATES_TO_CANONICAL,
+    });
+
+    expect(canonicalHotelsService.applyCandidate).toHaveBeenCalledWith(
+      candidate,
+    );
+    expect(
+      canonicalHotelCandidatesService.markCanonicalProcessed,
+    ).toHaveBeenCalledWith(
+      candidate._id,
+      canonicalHotelId,
+      'run-1',
+      CANONICAL_HOTEL_PROCESSING_ACTION.CREATED,
+    );
+    expect(hotelProcessingRunsService.incrementProcessed).toHaveBeenCalledWith(
+      'run-1',
+      1,
+      0,
+    );
+    expect(hotelProcessingRunsService.complete).toHaveBeenCalledWith('run-1');
+  });
+
+  it('marks candidates as review-required without failing the run', async () => {
+    const candidate = buildCandidate(new Types.ObjectId());
+    const review = {
+      candidateCanonicalHotelIds: [],
+      createdAt: new Date('2026-05-04T08:00:00.000Z'),
+      details: ['Candidate does not have enough canonical identity fields.'],
+      reason: CANONICAL_HOTEL_REVIEW_REASON.MISSING_IDENTITY_FIELDS,
+      resolvedAt: null,
+    };
+
+    canonicalHotelCandidatesService.claimPendingForRun.mockResolvedValue([
+      candidate,
+    ]);
+    canonicalHotelsService.applyCandidate.mockResolvedValue({
+      action: CANONICAL_HOTEL_PROCESSING_ACTION.REVIEW_REQUIRED,
+      canonicalHotelId: null,
+      review,
+    });
+    canonicalHotelCandidatesService.countByProcessingStatus.mockResolvedValue(
+      0,
+    );
+
+    await processor.processCandidatesToCanonicalBatch({
+      batchNo: 1,
+      batchSize: 50,
+      runId: 'run-1',
+      stage: HOTEL_PROCESSING_STAGE.CANDIDATES_TO_CANONICAL,
+    });
+
+    expect(
+      canonicalHotelCandidatesService.markCanonicalReviewRequired,
+    ).toHaveBeenCalledWith(candidate._id, 'run-1', review);
+    expect(
+      hotelProcessingRunsService.incrementReviewRequired,
+    ).toHaveBeenCalledWith('run-1', 1);
+    expect(hotelProcessingRunsService.fail).not.toHaveBeenCalled();
+    expect(hotelProcessingRunsService.complete).toHaveBeenCalledWith('run-1');
   });
 });

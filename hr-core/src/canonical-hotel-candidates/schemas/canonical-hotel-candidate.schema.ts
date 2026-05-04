@@ -1,4 +1,6 @@
 import { Schema } from 'mongoose';
+import { CANONICAL_HOTEL_PROCESSING_ACTION } from '../../canonical-hotels/constants/canonical-hotel-processing-action.enum';
+import { CANONICAL_HOTEL_REVIEW_REASON } from '../../canonical-hotels/constants/canonical-hotel-review-reason.enum';
 import { HOTEL_PROCESSING_STATUS } from '../../hotel-processing/constants/hotel-processing-status.enum';
 import { CANONICAL_HOTEL_CAPACITY_MODE } from '../constants/canonical-hotel-capacity-mode.enum';
 import { CANONICAL_HOTEL_CANDIDATE_STATUS } from '../constants/canonical-hotel-candidate-status.enum';
@@ -161,8 +163,46 @@ const canonicalHotelCandidateBuildSchema = new Schema(
   },
 );
 
+const canonicalHotelCandidateReviewSchema = new Schema(
+  {
+    candidateCanonicalHotelIds: {
+      default: [],
+      required: true,
+      type: [Schema.Types.ObjectId],
+    },
+    createdAt: {
+      required: true,
+      type: Date,
+    },
+    details: {
+      default: [],
+      required: true,
+      type: [String],
+    },
+    reason: {
+      enum: Object.values(CANONICAL_HOTEL_REVIEW_REASON),
+      required: true,
+      type: String,
+    },
+    resolvedAt: {
+      default: null,
+      required: false,
+      type: Date,
+    },
+  },
+  {
+    _id: false,
+  },
+);
+
 const canonicalHotelCandidateProcessingSchema = new Schema(
   {
+    action: {
+      default: null,
+      enum: [...Object.values(CANONICAL_HOTEL_PROCESSING_ACTION), null],
+      required: false,
+      type: String,
+    },
     canonicalHotelId: {
       default: null,
       required: false,
@@ -187,6 +227,11 @@ const canonicalHotelCandidateProcessingSchema = new Schema(
       default: null,
       required: false,
       type: String,
+    },
+    review: {
+      default: null,
+      required: false,
+      type: canonicalHotelCandidateReviewSchema,
     },
     status: {
       default: HOTEL_PROCESSING_STATUS.PENDING,

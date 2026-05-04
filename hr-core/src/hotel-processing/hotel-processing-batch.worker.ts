@@ -35,6 +35,15 @@ export class HotelProcessingBatchWorker
             job.data,
           );
         }
+
+        if (
+          job.name ===
+          String(HOTEL_PROCESSING_JOB_NAME.CANDIDATES_TO_CANONICAL_BATCH)
+        ) {
+          await this.hotelProcessingBatchProcessor.processCandidatesToCanonicalBatch(
+            job.data,
+          );
+        }
       },
       {
         concurrency: 1,

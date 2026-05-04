@@ -3,4 +3,5 @@ export interface IHotelProcessingRunStats {
   processed: number;
   failed: number;
   ignored: number;
+  reviewRequired?: number;
 }

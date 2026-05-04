@@ -4,4 +4,5 @@ export enum HOTEL_PROCESSING_STATUS {
   PROCESSED = 'processed',
   FAILED = 'failed',
   IGNORED = 'ignored',
+  REVIEW_REQUIRED = 'review_required',
 }

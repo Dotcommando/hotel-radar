@@ -19,6 +19,7 @@ import { IHotelProcessingRollbackResult } from './types/hotel-processing-rollbac
 import { IStartHotelProcessingRunResult } from './types/start-hotel-processing-run-result.interface';
 import { GetHotelProcessingRunUseCase } from './use-cases/get-hotel-processing-run.use-case';
 import { RollbackHotelProcessingUseCase } from './use-cases/rollback-hotel-processing.use-case';
+import { StartCandidatesToCanonicalRunUseCase } from './use-cases/start-candidates-to-canonical-run.use-case';
 import { StartRawToRegistryRunUseCase } from './use-cases/start-raw-to-registry-run.use-case';
 import { StartRegistryToCandidatesRunUseCase } from './use-cases/start-registry-to-candidates-run.use-case';
 
@@ -27,6 +28,7 @@ export class HotelProcessingController {
   constructor(
     private readonly startRawToRegistryRunUseCase: StartRawToRegistryRunUseCase,
     private readonly startRegistryToCandidatesRunUseCase: StartRegistryToCandidatesRunUseCase,
+    private readonly startCandidatesToCanonicalRunUseCase: StartCandidatesToCanonicalRunUseCase,
     private readonly getHotelProcessingRunUseCase: GetHotelProcessingRunUseCase,
     private readonly rollbackHotelProcessingUseCase: RollbackHotelProcessingUseCase,
   ) {}
@@ -77,6 +79,46 @@ export class HotelProcessingController {
           details: error.details,
           message:
             'Cannot start registry_to_candidates because raw_to_registry is not fully completed.',
+          ok: false,
+        });
+      }
+
+      if (error instanceof HotelProcessingNoPendingSourceDocumentsError) {
+        throw new ConflictException({
+          code: 'NO_PENDING_SOURCE_DOCUMENTS',
+          message: error.message,
+          ok: false,
+        });
+      }
+
+      throw error;
+    }
+  }
+
+  @Post('runs/candidates-to-canonical')
+  @HttpCode(HttpStatus.ACCEPTED)
+  async startCandidatesToCanonicalRun(): Promise<IStartHotelProcessingRunResult> {
+    return this.startCandidatesToCanonicalRunWithOptions(false);
+  }
+
+  @Post('runs/candidates-to-canonical/retry-review-required')
+  @HttpCode(HttpStatus.ACCEPTED)
+  async retryReviewRequiredCandidatesToCanonicalRun(): Promise<IStartHotelProcessingRunResult> {
+    return this.startCandidatesToCanonicalRunWithOptions(true);
+  }
+
+  private async startCandidatesToCanonicalRunWithOptions(
+    retryReviewRequired: boolean,
+  ): Promise<IStartHotelProcessingRunResult> {
+    try {
+      return await this.startCandidatesToCanonicalRunUseCase.execute({
+        retryReviewRequired,
+      });
+    } catch (error) {
+      if (error instanceof HotelProcessingActiveRunExistsError) {
+        throw new ConflictException({
+          code: 'ACTIVE_RUN_EXISTS',
+          message: error.message,
           ok: false,
         });
       }

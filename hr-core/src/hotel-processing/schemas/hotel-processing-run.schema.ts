@@ -21,6 +21,11 @@ const hotelProcessingRunStatsSchema = new Schema(
       required: true,
       type: Number,
     },
+    reviewRequired: {
+      default: 0,
+      required: false,
+      type: Number,
+    },
     total: {
       default: 0,
       required: true,
@@ -77,6 +82,7 @@ export const hotelProcessingRunSchema = new Schema<IHotelProcessingRun>(
         failed: 0,
         ignored: 0,
         processed: 0,
+        reviewRequired: 0,
         total: 0,
       }),
       required: true,

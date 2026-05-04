@@ -58,6 +58,24 @@ export class HotelProcessingQueueService implements OnModuleDestroy {
     );
   }
 
+  async addCandidatesToCanonicalBatch(
+    data: IHotelProcessingBatchJobData,
+  ): Promise<void> {
+    await this.queue.add(
+      HOTEL_PROCESSING_JOB_NAME.CANDIDATES_TO_CANONICAL_BATCH,
+      data,
+      {
+        attempts: 3,
+        backoff: {
+          delay: 5000,
+          type: 'fixed',
+        },
+        removeOnComplete: true,
+        removeOnFail: 100,
+      },
+    );
+  }
+
   async onModuleDestroy(): Promise<void> {
     await this.queue.close();
   }

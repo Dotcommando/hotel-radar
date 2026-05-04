@@ -101,6 +101,101 @@
       "response": []
     },
     {
+      "name": "Stage 4. Process candidates to canonical hotels",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "const response = pm.response.json();",
+              "",
+              "if (response.runId) {",
+              "  pm.environment.set('runId', response.runId);",
+              "  pm.collectionVariables.set('runId', response.runId);",
+              "}"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "auth": {
+          "type": "noauth"
+        },
+        "method": "POST",
+        "header": [],
+        "body": {
+          "mode": "raw",
+          "raw": "",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "{{hrCoreBaseUrl}}/hotel-processing/runs/candidates-to-canonical",
+          "host": [
+            "{{hrCoreBaseUrl}}"
+          ],
+          "path": [
+            "hotel-processing",
+            "runs",
+            "candidates-to-canonical"
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Stage 4. Retry review-required candidates",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "const response = pm.response.json();",
+              "",
+              "if (response.runId) {",
+              "  pm.environment.set('runId', response.runId);",
+              "  pm.collectionVariables.set('runId', response.runId);",
+              "}"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "auth": {
+          "type": "noauth"
+        },
+        "method": "POST",
+        "header": [],
+        "body": {
+          "mode": "raw",
+          "raw": "",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "{{hrCoreBaseUrl}}/hotel-processing/runs/candidates-to-canonical/retry-review-required",
+          "host": [
+            "{{hrCoreBaseUrl}}"
+          ],
+          "path": [
+            "hotel-processing",
+            "runs",
+            "candidates-to-canonical",
+            "retry-review-required"
+          ]
+        }
+      },
+      "response": []
+    },
+    {
       "name": "Rollback to Stage 2",
       "request": {
         "auth": {

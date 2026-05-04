@@ -12,6 +12,7 @@ import { IHotelProcessingRollbackResult } from './types/hotel-processing-rollbac
 import { IStartHotelProcessingRunResult } from './types/start-hotel-processing-run-result.interface';
 import { GetHotelProcessingRunUseCase } from './use-cases/get-hotel-processing-run.use-case';
 import { RollbackHotelProcessingUseCase } from './use-cases/rollback-hotel-processing.use-case';
+import { StartCandidatesToCanonicalRunUseCase } from './use-cases/start-candidates-to-canonical-run.use-case';
 import { StartRawToRegistryRunUseCase } from './use-cases/start-raw-to-registry-run.use-case';
 import { StartRegistryToCandidatesRunUseCase } from './use-cases/start-registry-to-candidates-run.use-case';
 
@@ -22,6 +23,12 @@ describe('HotelProcessingController', () => {
   };
   let startRegistryToCandidatesRunUseCase: {
     execute: jest.Mock<Promise<IStartHotelProcessingRunResult>, []>;
+  };
+  let startCandidatesToCanonicalRunUseCase: {
+    execute: jest.Mock<
+      Promise<IStartHotelProcessingRunResult>,
+      [{ retryReviewRequired?: boolean }?]
+    >;
   };
   let getHotelProcessingRunUseCase: {
     execute: jest.Mock<Promise<IGetHotelProcessingRunResult>, [string]>;
@@ -38,6 +45,9 @@ describe('HotelProcessingController', () => {
       execute: jest.fn(),
     };
     startRegistryToCandidatesRunUseCase = {
+      execute: jest.fn(),
+    };
+    startCandidatesToCanonicalRunUseCase = {
       execute: jest.fn(),
     };
     getHotelProcessingRunUseCase = {
@@ -57,6 +67,10 @@ describe('HotelProcessingController', () => {
         {
           provide: StartRegistryToCandidatesRunUseCase,
           useValue: startRegistryToCandidatesRunUseCase,
+        },
+        {
+          provide: StartCandidatesToCanonicalRunUseCase,
+          useValue: startCandidatesToCanonicalRunUseCase,
         },
         {
           provide: GetHotelProcessingRunUseCase,
@@ -170,5 +184,47 @@ describe('HotelProcessingController', () => {
     await expect(controller.startRawToRegistryRun()).resolves.toEqual(
       resultFixture,
     );
+  });
+
+  it('starts candidates-to-canonical via endpoint', async () => {
+    const resultFixture: IStartHotelProcessingRunResult = {
+      batchSize: 50,
+      ok: true,
+      runId: '2026-05-04T08-00-00-candidates-to-canonical',
+      stage: HOTEL_PROCESSING_STAGE.CANDIDATES_TO_CANONICAL,
+      status: HOTEL_PROCESSING_RUN_STATUS.QUEUED,
+    };
+
+    startCandidatesToCanonicalRunUseCase.execute.mockResolvedValue(
+      resultFixture,
+    );
+
+    await expect(controller.startCandidatesToCanonicalRun()).resolves.toEqual(
+      resultFixture,
+    );
+    expect(startCandidatesToCanonicalRunUseCase.execute).toHaveBeenCalledWith({
+      retryReviewRequired: false,
+    });
+  });
+
+  it('starts review-required candidates retry via endpoint', async () => {
+    const resultFixture: IStartHotelProcessingRunResult = {
+      batchSize: 50,
+      ok: true,
+      runId: '2026-05-04T08-00-00-candidates-to-canonical',
+      stage: HOTEL_PROCESSING_STAGE.CANDIDATES_TO_CANONICAL,
+      status: HOTEL_PROCESSING_RUN_STATUS.QUEUED,
+    };
+
+    startCandidatesToCanonicalRunUseCase.execute.mockResolvedValue(
+      resultFixture,
+    );
+
+    await expect(
+      controller.retryReviewRequiredCandidatesToCanonicalRun(),
+    ).resolves.toEqual(resultFixture);
+    expect(startCandidatesToCanonicalRunUseCase.execute).toHaveBeenCalledWith({
+      retryReviewRequired: true,
+    });
   });
 });
