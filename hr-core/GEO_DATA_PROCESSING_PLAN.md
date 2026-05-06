@@ -2,974 +2,631 @@
 
 ## Purpose
 
-This document describes the planned processing pipeline for geo data used by `hr-core` in the hotel radar project.
+This document replaces the earlier geo import plan.
 
-The goal is to import free geo data into MongoDB and use it later for:
+The geo import stage is already implemented and has produced `hotel_geo_candidates`. The next stage is to match those external geo candidates to `canonical_hotels` and write the selected point into `canonical_hotels.geo`.
 
-- matching external hotel geo objects to `canonical_hotels`;
-- storing hotel geo candidates from OSM and later Foursquare OS Places;
-- storing beach geometries and beach profiles;
-- calculating distances from hotels to beaches and other POI;
-- periodically refreshing geo sources and detecting changes.
+The first implementation must add two idempotent endpoints:
 
-The current focus is OSM data. Foursquare OS Places will be added later as a separate source.
+- automatic matching of many `hotel_geo_candidates` to `canonical_hotels`;
+- manual matching of one `hotel_geo_candidates._id` to one `canonical_hotels._id`.
 
-## Expected source files
+The matching stage must prefer precision over volume, but it should still produce as many automatic matches as possible from strong deterministic signals.
 
-The following files are expected to exist in the project:
+## Current Data State
 
-```txt
-hr-core/data/raw/osm/overpass/hotels.geojson
-hr-core/data/raw/osm/overpass/beaches.geojson
-hr-core/data/raw/osm/geofabrik/cyprus-latest.osm.pbf
-hr-core/data/raw/osm/geofabrik/cyprus-latest-free.gpkg/cyprus.gpkg
-```
-
-They are all OSM-derived data.
-
-`hr-core/data/raw/osm/overpass` is for manual or API-driven Overpass exports.
-
-`hr-core/data/raw/osm/geofabrik` is for full Geofabrik extracts and Geofabrik-derived GIS files.
-
-`hr-core/data/raw/fsq` is reserved for future Foursquare OS Places exports. OSM/Geofabrik files do not belong there.
-
-## Current file layout
+Observed in the local Docker MongoDB database on 2026-05-06:
 
 ```txt
-hr-core/data/raw/osm/
-  overpass/
-    hotels.geojson
-    beaches.geojson
-
-  geofabrik/
-    cyprus-latest.osm.pbf
-    cyprus-latest-free.gpkg.zip
-    cyprus-latest-free.gpkg/
-      cyprus.gpkg
-
-hr-core/data/raw/fsq/
-  # reserved for future Foursquare OS Places exports
-  # example future file:
-  # fsq-os-places-cyprus.csv
+canonical_hotels: 701
+hotel_geo_candidates: 1358
+canonical_hotels with geo.point: 0
+hotel_geo_candidates by matchStatus:
+  UNMATCHED: 1358
+hotel_geo_candidates by lifecycle.status:
+  ACTIVE: 1358
 ```
 
-The `.zip` file is optional after extraction, but if it is kept, it should remain under `hr-core/data/raw/osm/geofabrik`.
-
-## Meaning of each source file
-
-### `hr-core/data/raw/osm/overpass/hotels.geojson`
-
-Manual export from Overpass Turbo.
-
-Contains hotel-like OSM objects matching tags such as:
+Useful current identity coverage:
 
 ```txt
-tourism=hotel
-tourism=apartment
-tourism=guest_house
-tourism=hostel
-tourism=resort
+canonical_hotels with phone: 697
+canonical_hotels with website/domain: 486
+hotel_geo_candidates with name: 1148
+hotel_geo_candidates with phone/contact: 276
+hotel_geo_candidates with website/url: 296
 ```
 
-This file is not the canonical hotel list. It is an external geo candidate list.
-
-Current count observed:
+`hotel_geo_candidates` OSM `tourism` distribution:
 
 ```txt
-1358 features
+hotel: 727
+apartment: 357
+guest_house: 233
+hostel: 41
 ```
 
-This count is expected to differ significantly from the project's approximately 700 canonical hotels. OSM may contain villas, apartments, guest houses, duplicated nodes/polygons, resort components, objects outside the Republic of Cyprus, objects in Northern Cyprus, and other hotel-like entities.
-
-Do not filter Northern Cyprus at import time. The project should keep full-island geo data in MongoDB and classify/filter regions later at product/reporting level.
-
-### `hr-core/data/raw/osm/overpass/beaches.geojson`
-
-Manual export from Overpass Turbo.
-
-Contains OSM beach-like objects such as:
+Initial deterministic analysis:
 
 ```txt
-natural=beach
-leisure=beach_resort
+raw exact unique name matches: 125
+reduced exact unique name matches: 307
+unique phone + compatible name: 98
+unique email + compatible name: 42
+unique non-shared domain + compatible name: 70
+strong contact + compatible name: 117
+strict one-to-one proposals after resolving duplicate targets: about 303
 ```
 
-Current count observed:
+Important data quality observations:
 
-```txt
-332 features
+- Some OSM objects duplicate the same physical hotel as a relation, way, and node.
+- Some canonical hotels receive multiple plausible OSM candidates.
+- Some group contacts are shared between different hotels and must not be used as standalone proof.
+- Examples of shared or weak domains include `tsokkos.com`, `kanikahotels.com`, `atlanticahotels.com`, `louis-hotels.com`, `louishotels.com`, `leonardo-hotels.com`, `leonardo-hotels-cyprus.com`, `radissonhotels.com`, `marriott.com`, `ihg.com`, `booking.com`, and `expedia.com`.
+- Some OSM hotel-like objects are in Northern Cyprus or are villas/apartments/guest houses that do not exist in `canonical_hotels`; they should remain unmatched unless there is a strong canonical identity signal.
+
+## Existing Model Constraints
+
+`hotel_geo_candidates` already has the fields needed for matching:
+
+```ts
+canonicalHotelId: ObjectId | null
+componentId: string | null
+matchStatus: "UNMATCHED" | "AUTO_MATCHED" | "NEEDS_REVIEW" | "CONFIRMED" | "REJECTED"
+matchReasons: string[]
+point: GeoJSON Point
+source: {
+  type: string
+  dataset: string
+  id: string
+  importRunId: ObjectId
+}
+sourceProperties: Record<string, unknown>
 ```
 
-Current geometry distribution observed:
-
-```txt
-1 LineString
-56 Point
-275 Polygon
-```
-
-This is good enough for a first import. Most beaches already have polygon geometry.
-
-### `hr-core/data/raw/osm/geofabrik/cyprus-latest.osm.pbf`
-
-Full raw OSM extract for Cyprus from Geofabrik.
-
-This is the future preferred source for repeatable local extraction. It can be processed with tools such as `osmium-tool`.
-
-It should not be parsed first. The current import should start from the smaller Overpass GeoJSON files.
-
-### `hr-core/data/raw/osm/geofabrik/cyprus-latest-free.gpkg/cyprus.gpkg`
-
-GeoPackage generated from the same OSM source family.
-
-This is useful for inspection in QGIS and for experiments via GDAL/OGR tools such as `ogrinfo` and `ogr2ogr`.
-
-It is not the first-choice input for the MongoDB importer. The first-choice input is GeoJSON because it is simpler to process in the NestJS service.
-
-## Should Northern Cyprus be filtered out?
-
-No. At this stage, do not filter it out.
-
-Keep full-island geo data in MongoDB. Later, product features can decide whether to operate on:
-
-```txt
-FULL_ISLAND
-REPUBLIC_OF_CYPRUS_ONLY
-CUSTOM_REGION
-```
-
-This can be represented later by adding region classification fields, not by deleting data at import time.
-
-## MongoDB collections
-
-The first version should create/import into these collections:
-
-```txt
-geo_import_runs
-hotel_geo_candidates
-beach_profiles
-```
-
-Later, when Foursquare OS Places and other POI sources are added, add:
-
-```txt
-poi_places
-hotel_nearby_places
-hotel_area_scores
-geo_source_change_events
-```
-
-Do not import OSM hotel objects directly into `canonical_hotels`.
-
-## Collection: `geo_import_runs`
-
-Purpose: store metadata about every import run.
-
-Recommended shape:
+`canonical_hotels.geo` currently has this minimal shape:
 
 ```ts
 {
-  _id: ObjectId,
-
-  sourceType: "OSM" | "FSQ_OS_PLACES",
-  sourceDataset: "OVERPASS_TURBO" | "GEOFABRIK_PBF" | "GEOFABRIK_GPKG" | "FSQ_PORTAL_EXPORT",
-  importKind: "HOTELS" | "BEACHES" | "FULL_EXTRACT" | "POI",
-
-  status: "PENDING" | "RUNNING" | "COMPLETED" | "FAILED",
-
-  filePath: string,
-  fileName: string,
-  fileSizeBytes: number | null,
-  fileSha256: string | null,
-
-  startedAt: Date,
-  finishedAt: Date | null,
-
-  stats: {
-    read: number,
-    inserted: number,
-    updated: number,
-    unchanged: number,
-    markedStale: number,
-    failed: number
-  },
-
-  error: string | null,
-
-  createdAt: Date,
-  updatedAt: Date
+  point: GeoJSON Point | null
+  source: string | null
 }
 ```
 
-Recommended indexes:
+The first matching implementation should use the existing shape instead of expanding the schema.
 
-```js
-db.geo_import_runs.createIndex({ sourceType: 1, sourceDataset: 1, importKind: 1, startedAt: -1 })
-db.geo_import_runs.createIndex({ status: 1, startedAt: -1 })
+Recommended `canonical_hotels.geo.source` value:
+
+```txt
+hotel_geo_candidate:<hotel_geo_candidates._id>
 ```
 
-## Collection: `hotel_geo_candidates`
+The full provider identity stays on the linked `hotel_geo_candidates` document. This keeps the canonical hotel document small and makes idempotency checks straightforward.
 
-Purpose: store external hotel-like geo objects from OSM and later Foursquare/Google/commercial sources.
+## Endpoint 1: Automatic Matching
 
-These records are candidates for matching to `canonical_hotels`, not canonical hotels themselves.
+### Route
 
-Recommended shape:
-
-```ts
-{
-  _id: ObjectId,
-
-  source: {
-    type: "OSM" | "FSQ_OS_PLACES" | "GOOGLE_PLACES" | "COMMERCIAL_PROVIDER" | "MANUAL",
-    dataset: "OVERPASS_TURBO" | "GEOFABRIK_PBF" | "FSQ_PORTAL_EXPORT" | "GOOGLE_PLACES_API" | "MANUAL_REVIEW",
-    id: string,
-    importRunId: ObjectId
-  },
-
-  canonicalHotelId: ObjectId | null,
-  componentId: string | null,
-
-  matchStatus: "UNMATCHED" | "AUTO_MATCHED" | "NEEDS_REVIEW" | "CONFIRMED" | "REJECTED",
-  matchReasons: string[],
-
-  name: string | null,
-  normalizedName: string | null,
-
-  point: {
-    type: "Point",
-    coordinates: [number, number]
-  },
-
-  geometry: {
-    type: "Point" | "LineString" | "Polygon" | "MultiPolygon",
-    coordinates: unknown
-  },
-
-  sourceProperties: Record<string, unknown>,
-
-  sourceHashes: {
-    propertiesHash: string,
-    geometryHash: string
-  },
-
-  lifecycle: {
-    status: "ACTIVE" | "STALE" | "REMOVED_FROM_SOURCE",
-    firstSeenAt: Date,
-    lastSeenAt: Date,
-    notSeenSince: Date | null
-  },
-
-  createdAt: Date,
-  updatedAt: Date
-}
+```txt
+POST /geo-data/hotel-candidates/match/auto
 ```
 
-Example source object from OSM:
+This route belongs under `geo-data` because the existing geo read endpoints are already there:
+
+```txt
+GET /geo-data/hotel-candidates
+GET /geo-data/hotel-candidates/stats
+GET /geo-data/hotel-candidates/:id
+```
+
+### Request Body
+
+First version can accept an empty body.
+
+Optional future-safe body:
 
 ```json
 {
-  "type": "Feature",
-  "properties": {
-    "@id": "relation/2677825",
-    "fax": "+357 23820280",
-    "name": "Sunny Coast Hotel Apts",
-    "phone": "+357 23822200",
-    "stars": "4",
-    "tourism": "hotel",
-    "type": "multipolygon",
-    "@geometry": "center"
-  },
-  "geometry": {
-    "type": "Point",
-    "coordinates": [
-      34.0116723,
-      35.0542236
-    ]
-  },
-  "id": "relation/2677825"
+  "dryRun": false,
+  "limit": 0
 }
 ```
 
-Do not store both `sourceProperties` and a full `sourceFeature`. That would duplicate `properties` unnecessarily. Store normalized fields, `sourceProperties`, and `geometry`.
+`dryRun` may be implemented immediately if it is cheap, but it is not required for the first endpoint. If implemented, `dryRun: true` must return the same decision report without database writes.
 
-Recommended indexes:
+`limit: 0` means no explicit limit. If a positive limit is provided, process only that many eligible candidates in deterministic sort order.
 
-```js
-db.hotel_geo_candidates.createIndex({ "source.type": 1, "source.dataset": 1, "source.id": 1 }, { unique: true })
-db.hotel_geo_candidates.createIndex({ point: "2dsphere" })
-db.hotel_geo_candidates.createIndex({ canonicalHotelId: 1, componentId: 1, matchStatus: 1 })
-db.hotel_geo_candidates.createIndex({ normalizedName: 1 })
-db.hotel_geo_candidates.createIndex({ matchStatus: 1, updatedAt: -1 })
-```
+### Response
 
-## Collection: `beach_profiles`
+Recommended response shape:
 
-Purpose: store beaches as first-class product entities.
-
-Beaches should not be treated as ordinary POI only. They are important for future hotel analysis: nearest beach, walking distance, beach access score, family friendliness, beach type, facilities, and tourist positioning.
-
-Recommended shape:
-
-```ts
+```json
 {
-  _id: ObjectId,
-
-  source: {
-    type: "OSM" | "CYPRUS_OPEN_DATA" | "MANUAL",
-    dataset: "OVERPASS_TURBO" | "GEOFABRIK_PBF" | "MANUAL_REVIEW",
-    id: string,
-    importRunId: ObjectId
+  "ok": true,
+  "dryRun": false,
+  "stats": {
+    "eligibleCandidates": 1358,
+    "autoMatched": 303,
+    "alreadyMatched": 0,
+    "needsReview": 0,
+    "skippedConfirmed": 0,
+    "skippedRejected": 0,
+    "skippedStale": 0,
+    "noDeterministicMatch": 1055,
+    "conflicts": 0
   },
-
-  name: string | null,
-  normalizedName: string | null,
-
-  point: {
-    type: "Point",
-    coordinates: [number, number]
-  },
-
-  geometry: {
-    type: "Point" | "LineString" | "Polygon" | "MultiPolygon",
-    coordinates: unknown
-  },
-
-  geometryKind: "POINT" | "LINE" | "AREA",
-
-  sourceProperties: Record<string, unknown>,
-
-  sourceHashes: {
-    propertiesHash: string,
-    geometryHash: string
-  },
-
-  beachType: "SAND" | "PEBBLE" | "ROCKY" | "MIXED" | "UNKNOWN",
-
-  quality: {
-    status: "RAW" | "NORMALIZED" | "NEEDS_REVIEW" | "VERIFIED",
-    confidence: "LOW" | "MEDIUM" | "HIGH",
-    reasons: string[]
-  },
-
-  lifecycle: {
-    status: "ACTIVE" | "STALE" | "REMOVED_FROM_SOURCE",
-    firstSeenAt: Date,
-    lastSeenAt: Date,
-    notSeenSince: Date | null
-  },
-
-  createdAt: Date,
-  updatedAt: Date
+  "matches": [
+    {
+      "hotelGeoCandidateId": "string",
+      "canonicalHotelId": "string",
+      "action": "AUTO_MATCHED",
+      "reasons": ["CONTACT_AND_COMPATIBLE_NAME"],
+      "score": 100
+    }
+  ],
+  "conflicts": []
 }
 ```
 
-Recommended indexes:
+The response should include enough per-match detail for manual spot checks. If the response gets too large, return all conflicts and only the first N matches, with a `returnedMatches` counter.
 
-```js
-db.beach_profiles.createIndex({ "source.type": 1, "source.dataset": 1, "source.id": 1 }, { unique: true })
-db.beach_profiles.createIndex({ point: "2dsphere" })
-db.beach_profiles.createIndex({ geometryKind: 1 })
-db.beach_profiles.createIndex({ normalizedName: 1 })
-db.beach_profiles.createIndex({ "quality.status": 1, updatedAt: -1 })
+### Eligibility
+
+Automatic matching should consider:
+
+- `lifecycle.status = ACTIVE`;
+- `matchStatus = UNMATCHED`;
+- existing `AUTO_MATCHED` records only for idempotency verification or safe recomputation.
+
+Automatic matching must skip:
+
+- `CONFIRMED`, because manual confirmation is stronger than automation;
+- `REJECTED`;
+- stale or removed source objects;
+- candidates without a valid point;
+- candidates where the target canonical hotel already has a different confirmed or auto match.
+
+### Matching Signals
+
+Build normalized candidate identity from:
+
+- `hotel_geo_candidates.name`;
+- `hotel_geo_candidates.normalizedName`;
+- `sourceProperties.name`;
+- `sourceProperties["name:en"]`;
+- `sourceProperties.official_name`;
+- `sourceProperties.alt_name`.
+
+Build candidate contacts from:
+
+- `sourceProperties.phone`;
+- `sourceProperties["contact:phone"]`;
+- `sourceProperties.email`;
+- `sourceProperties["contact:email"]`;
+- `sourceProperties.website`;
+- `sourceProperties["contact:website"]`;
+- `sourceProperties.url`.
+
+Build canonical identity from:
+
+- `canonicalName`;
+- `components.name`;
+- `contacts.phones`;
+- `contacts.emails`;
+- `contacts.domains`;
+- `contacts.websites`;
+- `webPresence.domains`;
+- `webPresence.websites`;
+- component-level contacts, if available.
+
+Normalization rules:
+
+- uppercase names;
+- normalize Unicode with NFKC;
+- replace `&` with `AND`;
+- remove punctuation;
+- collapse whitespace;
+- create two name forms:
+  - raw normalized form;
+  - reduced form with generic words removed, such as `HOTEL`, `HOTELS`, `APARTMENT`, `APARTMENTS`, `APTS`, `RESORT`, `VILLAGE`, `SUITES`, `BOUTIQUE`, `HOSTEL`, `GUEST HOUSE`, `BEACH`, `SPA`.
+- normalize phone numbers to digit-only Cyprus format where possible;
+- normalize website values to host names without `www.`;
+- ignore known shared/group domains for domain-only evidence;
+- ignore emails whose domain is a known shared/group domain for email-only evidence.
+
+### Automatic Match Rules
+
+Use a deterministic scoring model. A candidate can be auto-matched only when it has exactly one top canonical target and that canonical target has exactly one top geo candidate.
+
+Recommended first scoring:
+
+```txt
+100 CONTACT_AND_COMPATIBLE_NAME
+  exact phone, non-shared email, or non-shared domain matches one canonical hotel,
+  and candidate/canonical names are compatible after reduced normalization.
+
+80 RAW_EXACT_NAME
+  raw normalized candidate name exactly equals canonical hotel name or component name,
+  and the match is unique.
+
+60 REDUCED_EXACT_NAME
+  reduced candidate name exactly equals reduced canonical hotel or component name,
+  and both sides are one-to-one after conflict resolution.
 ```
 
-A `geometry` 2dsphere index may be added later if needed:
+Do not auto-match on:
 
-```js
-db.beach_profiles.createIndex({ geometry: "2dsphere" })
+- phone only without name compatibility;
+- email only if the email domain is shared by a hotel group;
+- domain only if the domain is shared by a hotel group;
+- reduced name when multiple OSM candidates target the same canonical hotel with the same score;
+- contacts that point to one canonical hotel while the name strongly points to another.
+
+### Duplicate Target Resolution
+
+For each canonical hotel, collect all candidate proposals.
+
+Auto-match only the single highest scoring candidate if:
+
+- it is the only proposal with the highest score;
+- the candidate itself has only one highest scoring canonical target;
+- the canonical hotel has no existing different geo match;
+- `canonical_hotels.geo.point` is `null` or already points to the same `hotel_geo_candidate:<id>` source.
+
+If multiple candidates tie for the same canonical hotel, leave them unmatched or mark them `NEEDS_REVIEW` with a conflict reason.
+
+Examples observed in current data:
+
+```txt
+OLYMPIC LAGOON RESORT:
+  relation/2679724 has contact + name evidence
+  way/1049729831 has reduced-name evidence
+  auto-match the relation, keep the weaker duplicate unmatched/review.
+
+GRECIAN PARK:
+  two OSM ways have contact + name evidence with the same score
+  do not auto-match; needs manual review.
+
+AVANTI:
+  Avanti Hotel and Avanti Village both reduce to AVANTI
+  do not auto-match on reduced name alone.
 ```
 
-For the first version, indexing `point` is enough.
+### Write Behavior
 
-## What to store in `canonical_hotels`
+For every accepted automatic match:
 
-Do not copy the whole external geo object into `canonical_hotels`.
-
-Store only the selected geo summary and a reference to the selected source candidate.
-
-Recommended shape:
+Update `hotel_geo_candidates`:
 
 ```ts
-geo: {
-  status: "MISSING" | "NEEDS_REVIEW" | "CONFIRMED",
+canonicalHotelId = canonicalHotel._id
+componentId = componentKey or null
+matchStatus = AUTO_MATCHED
+matchReasons = [
+  "AUTO_MATCH",
+  "CONTACT_AND_COMPATIBLE_NAME" | "RAW_EXACT_NAME" | "REDUCED_EXACT_NAME",
+  "SCORE:<number>"
+]
+updatedAt = now
+```
 
-  point: {
-    type: "Point",
-    coordinates: [number, number]
-  } | null,
+Update `canonical_hotels`:
 
-  source: {
-    type: "OSM" | "FSQ_OS_PLACES" | "GOOGLE_PLACES" | "COMMERCIAL_PROVIDER" | "MANUAL" | null,
-    dataset: string | null,
-    id: string | null,
-    candidateId: ObjectId | null
-  },
+```ts
+geo.point = hotelGeoCandidate.point
+geo.source = "hotel_geo_candidate:<hotelGeoCandidateId>"
+updatedAt = now
+```
 
-  sourceSnapshot: {
-    name: string | null,
-    properties: Record<string, unknown>
-  } | null,
+Use `returnDocument: "after"` for any `findOneAndUpdate()` call.
 
-  sourceCandidateChanged: boolean,
-  needsGeoReview: boolean,
+Do not overwrite a canonical hotel geo point if:
 
-  updatedAt: Date | null
+- `geo.source` references a different candidate;
+- another active candidate is already `AUTO_MATCHED` or `CONFIRMED` to that canonical hotel;
+- the existing match status is `CONFIRMED`.
+
+### Idempotency
+
+Running automatic matching repeatedly must not change the result after the first successful run.
+
+Idempotent cases:
+
+- candidate is already `AUTO_MATCHED` to the same canonical hotel and canonical `geo.source` already references the same candidate: count as `alreadyMatched`;
+- canonical hotel already has the same geo source and point: no-op;
+- candidate has no deterministic match: no-op;
+- candidate is `CONFIRMED`: skip, never downgrade;
+- candidate is `REJECTED`: skip.
+
+If recomputation finds a different target for an existing `AUTO_MATCHED` candidate, do not move it automatically. Mark the candidate as `NEEDS_REVIEW` or report a conflict.
+
+## Endpoint 2: Manual Match by Id
+
+### Route
+
+```txt
+POST /geo-data/hotel-candidates/match/manual
+```
+
+### Request Body
+
+```json
+{
+  "hotelGeoCandidateId": "69fae6928833ac8ce429d20d",
+  "canonicalHotelId": "69f88430878f7fca1f7e0ac6",
+  "componentId": null
 }
 ```
 
-`sourceSnapshot.properties` should be a compact selected snapshot, not the entire raw OSM feature. The full raw-ish data remains in `hotel_geo_candidates`.
+`componentId` is optional. If provided, it must match one of `canonical_hotels.components.componentKey`.
 
-For hotel components, use the same idea inside each component's `geo` field.
+Do not add a `force` flag in the first implementation. The first endpoint should be conservative and refuse overwrites. A forced rematch can be added later as a separate explicit endpoint or a reviewed extension.
 
-## Import logic for OSM Overpass hotel candidates
+### Success Response
 
-Input file:
-
-```txt
-hr-core/data/raw/osm/overpass/hotels.geojson
+```json
+{
+  "ok": true,
+  "action": "CONFIRMED",
+  "hotelGeoCandidateId": "string",
+  "canonicalHotelId": "string",
+  "componentId": null,
+  "canonicalGeoSource": "hotel_geo_candidate:string",
+  "idempotent": false
+}
 ```
 
-Import target:
+Repeated same request after a successful manual match:
 
-```txt
-hotel_geo_candidates
+```json
+{
+  "ok": true,
+  "action": "ALREADY_CONFIRMED",
+  "hotelGeoCandidateId": "string",
+  "canonicalHotelId": "string",
+  "componentId": null,
+  "canonicalGeoSource": "hotel_geo_candidate:string",
+  "idempotent": true
+}
 ```
 
-For each GeoJSON feature:
+### Write Behavior
 
-1. Read `feature.id` or `feature.properties["@id"]` as `source.id`.
-2. Read `feature.properties.name` as `name`.
-3. Normalize name into `normalizedName`.
-4. Store `feature.geometry` as `geometry`.
-5. Compute a representative `point`:
-   - if geometry is `Point`, use it directly;
-   - if geometry is `Polygon` or `MultiPolygon`, use centroid or representative point;
-   - if geometry came from Overpass as `@geometry=center`, use that point as the first version.
-6. Store `feature.properties` as `sourceProperties`.
-7. Compute `propertiesHash` and `geometryHash`.
-8. Upsert by `{ source.type, source.dataset, source.id }`.
-9. New records start with:
+For a new manual match:
+
+Update `hotel_geo_candidates`:
 
 ```ts
-matchStatus: "UNMATCHED"
-canonicalHotelId: null
-componentId: null
-lifecycle.status: "ACTIVE"
+canonicalHotelId = canonicalHotel._id
+componentId = provided componentId or null
+matchStatus = CONFIRMED
+matchReasons = ["MANUAL_MATCH"]
+updatedAt = now
 ```
 
-Do not auto-update `canonical_hotels` during import. Matching is a separate stage.
-
-## Import logic for OSM beaches
-
-Input file:
-
-```txt
-hr-core/data/raw/osm/overpass/beaches.geojson
-```
-
-Import target:
-
-```txt
-beach_profiles
-```
-
-For each GeoJSON feature:
-
-1. Read `feature.id` or `feature.properties["@id"]` as `source.id`.
-2. Read `feature.properties.name` as `name` if present.
-3. Normalize name into `normalizedName` if present.
-4. Store full `feature.geometry` as `geometry`.
-5. Compute `geometryKind`:
-   - `Point` -> `POINT`;
-   - `LineString` or `MultiLineString` -> `LINE`;
-   - `Polygon` or `MultiPolygon` -> `AREA`.
-6. Compute representative `point`:
-   - for `Point`, use it directly;
-   - for `LineString`, use midpoint or centroid;
-   - for `Polygon`/`MultiPolygon`, use centroid or representative point.
-7. Store `feature.properties` as `sourceProperties`.
-8. Compute `propertiesHash` and `geometryHash`.
-9. Upsert by `{ source.type, source.dataset, source.id }`.
-10. New records start with:
+Update `canonical_hotels`:
 
 ```ts
-quality.status: "RAW"
-quality.confidence: "MEDIUM"
-lifecycle.status: "ACTIVE"
+geo.point = hotelGeoCandidate.point
+geo.source = "hotel_geo_candidate:<hotelGeoCandidateId>"
+updatedAt = now
 ```
 
-## Periodic update plan
+Manual matching may upgrade an existing `AUTO_MATCHED` candidate to `CONFIRMED` if it points to the same canonical hotel.
 
-Periodic update should be planned from the beginning.
+Manual matching must not silently move:
 
-Geo data changes over time:
+- one candidate from one canonical hotel to another;
+- one canonical hotel from one candidate to another;
+- a rejected candidate back into matched state;
+- a stale/removed source object into a canonical hotel.
 
-- hotels can be added or removed from OSM;
-- POI can open and close;
-- beach geometry can change;
-- one beach can be split into two;
-- one object can keep the old name while another new object appears nearby;
-- source tags can be enriched or removed.
+### Error Cases
 
-The import process should not simply delete and recreate everything.
-
-Recommended process:
+Invalid ObjectId format:
 
 ```txt
-new import file -> create geo_import_run -> read features -> upsert by source id -> mark missing old records as STALE -> write import stats
+400 INVALID_HOTEL_GEO_CANDIDATE_ID
+400 INVALID_CANONICAL_HOTEL_ID
 ```
 
-For every source entity, keep:
+Missing documents:
 
 ```txt
-firstSeenAt
-lastSeenAt
-notSeenSince
-lifecycle.status
-propertiesHash
-geometryHash
+404 HOTEL_GEO_CANDIDATE_NOT_FOUND
+404 CANONICAL_HOTEL_NOT_FOUND
 ```
 
-If an object exists in MongoDB but is not present in the latest import:
-
-1. Do not delete it.
-2. Set `lifecycle.status = "STALE"`.
-3. Set `lifecycle.notSeenSince` if it was not already set.
-4. If it is missing across several later imports, set `REMOVED_FROM_SOURCE`.
-
-If geometry changes:
-
-- update `geometry` and `point` in the source collection;
-- update `geometryHash`;
-- for beaches, set `quality.status = "NEEDS_REVIEW"` if the geometry changed significantly;
-- for confirmed hotel matches, do not silently change `canonical_hotels.geo` without review.
-
-If a confirmed hotel geo candidate changes, set on `canonical_hotels.geo`:
-
-```ts
-sourceCandidateChanged: true
-needsGeoReview: true
-```
-
-The confirmed canonical hotel point should not be blindly overwritten by a source update.
-
-## Matching stage
-
-Matching is separate from import.
-
-Input:
+Invalid component:
 
 ```txt
-canonical_hotels
-hotel_geo_candidates
+400 CANONICAL_HOTEL_COMPONENT_NOT_FOUND
 ```
 
-Output:
+Candidate is not active:
 
 ```txt
-hotel_geo_candidates.canonicalHotelId
-hotel_geo_candidates.componentId
-hotel_geo_candidates.matchStatus
-hotel_geo_candidates.matchReasons
-canonical_hotels.geo
+409 HOTEL_GEO_CANDIDATE_NOT_ACTIVE
 ```
 
-Initial match statuses:
+Candidate is rejected:
 
 ```txt
-UNMATCHED
-AUTO_MATCHED
-NEEDS_REVIEW
-CONFIRMED
-REJECTED
+409 HOTEL_GEO_CANDIDATE_REJECTED
 ```
 
-Matching signals:
+Candidate already points to another canonical hotel:
 
 ```txt
-normalized name similarity
-locality/address similarity
-phone match
-website/domain match
-star/category sanity check
-component/resort naming
-existing geo distance if available
+409 HOTEL_GEO_CANDIDATE_ALREADY_MATCHED
 ```
 
-The first version can import candidates only. Matching can be implemented after basic stats are visible.
-
-## Future Foursquare OS Places import
-
-Foursquare OS Places should use `hr-core/data/raw/fsq`, not `hr-core/data/raw/osm`.
-
-Expected future file example:
+Canonical hotel already has another active matched candidate:
 
 ```txt
-hr-core/data/raw/fsq/fsq-os-places-cyprus.csv
+409 CANONICAL_HOTEL_ALREADY_HAS_GEO_MATCH
 ```
 
-Foursquare can later feed:
+Canonical hotel `geo.source` references another candidate:
 
 ```txt
-hotel_geo_candidates
-poi_places
+409 CANONICAL_HOTEL_GEO_SOURCE_CONFLICT
 ```
 
-It should not replace OSM. It should complement OSM, especially for commercial POI such as restaurants, cafes, shops, salons, pharmacies, attractions, and services.
-
-## Future general POI collection
-
-When Foursquare OS Places and broader OSM POI imports are added, create:
+Canonical hotel already has a geo point from an unknown/non-candidate source:
 
 ```txt
-poi_places
+409 CANONICAL_HOTEL_GEO_ALREADY_SET
 ```
 
-Purpose:
+Candidate point is missing or invalid:
 
 ```txt
-restaurants
-cafes
-supermarkets
-pharmacies
-hair salons
-ATMs
-parking
-attractions
-bus stops
-shops
+409 HOTEL_GEO_CANDIDATE_POINT_INVALID
 ```
 
-Beaches should remain in `beach_profiles` as first-class entities.
+### Manual Idempotency
 
-A later derived collection can combine hotels, beaches, and POI for calculations:
+The manual endpoint is idempotent only for the exact same desired state.
+
+Return `ALREADY_CONFIRMED` when all of these are true:
+
+- candidate `canonicalHotelId` equals the requested canonical hotel id;
+- candidate `componentId` equals the requested component id or both are `null`;
+- candidate `matchStatus = CONFIRMED`;
+- canonical hotel `geo.source = hotel_geo_candidate:<candidateId>`;
+- canonical hotel `geo.point` equals the candidate point.
+
+If candidate and canonical hotel are partially inconsistent, return a conflict instead of guessing which side to trust.
+
+## Service Design
+
+Add a new feature-local module:
 
 ```txt
-hotel_nearby_places
-hotel_area_scores
+hr-core/src/geo-matching/
 ```
 
-## Processing PBF and GPKG later
-
-The current MongoDB import should start from:
+Recommended structure:
 
 ```txt
-hr-core/data/raw/osm/overpass/hotels.geojson
-hr-core/data/raw/osm/overpass/beaches.geojson
+hr-core/src/geo-matching/
+  constants/
+    geo-match-action.enum.ts
+    geo-match-error-code.enum.ts
+    geo-match-reason.enum.ts
+    geo-match-score.constant.ts
+    shared-hotel-domain.constant.ts
+  errors/
+  types/
+  utils/
+    geo-match-normalization.util.ts
+    geo-match-source.util.ts
+  use-cases/
+    auto-match-hotel-geo-candidates.use-case.ts
+    manual-match-hotel-geo-candidate.use-case.ts
+  geo-matching.module.ts
 ```
 
-The following files are not first-step import inputs:
+The controller can stay in `geo-data` to keep public geo endpoints grouped together, or a small `GeoMatchingController` can be added with the same `/geo-data/hotel-candidates/match/*` route prefix. Prefer the option with the smallest clean integration.
+
+Needed service additions:
+
+- `HotelGeoCandidatesService.findActiveMatchesByCanonicalHotelId(...)`;
+- `HotelGeoCandidatesService.listAutoMatchEligibleCandidates(...)`;
+- `HotelGeoCandidatesService.markAutoMatched(...)`;
+- `HotelGeoCandidatesService.markConfirmed(...)`;
+- `HotelGeoCandidatesService.markNeedsReview(...)`, if review marking is implemented;
+- `CanonicalHotelsService.findById(...)`;
+- `CanonicalHotelsService.listGeoMatchIndexData(...)`;
+- `CanonicalHotelsService.setGeoFromCandidateIfEmptyOrSame(...)`.
+
+Keep matching constants and normalization helpers inside `geo-matching`, not in shared generic folders.
+
+## Tests
+
+Use TDD.
+
+### Automatic Matching Tests
+
+Cover:
+
+- matches by strong contact + compatible name;
+- matches by raw exact unique name;
+- matches by reduced exact unique name only when one-to-one;
+- skips group/shared domain-only evidence;
+- skips group/shared email-only evidence;
+- refuses duplicate canonical target ties;
+- chooses the highest scoring single candidate when one proposal is clearly stronger;
+- skips `CONFIRMED`;
+- skips `REJECTED`;
+- skips stale candidates;
+- does not overwrite existing canonical geo from another candidate;
+- repeated run returns `alreadyMatched` and performs no state-changing writes;
+- recomputation conflict for an existing `AUTO_MATCHED` candidate does not silently move it.
+
+### Manual Matching Tests
+
+Cover:
+
+- successful new manual match;
+- repeated same request returns `ALREADY_CONFIRMED`;
+- invalid candidate id format;
+- invalid canonical id format;
+- missing candidate;
+- missing canonical hotel;
+- invalid `componentId`;
+- candidate already matched to a different canonical hotel;
+- canonical hotel already has another matched candidate;
+- canonical hotel `geo.source` references another candidate;
+- candidate is `REJECTED`;
+- candidate is stale or removed;
+- candidate has invalid point;
+- upgrades same-target `AUTO_MATCHED` to `CONFIRMED`.
+
+### Controller Tests
+
+Cover HTTP mapping:
+
+- success responses;
+- `400` validation errors;
+- `404` not found errors;
+- `409` conflict errors.
+
+## Postman
+
+Update `hr-core/postman-api/Hotel Radar.postman_collection.json` with:
 
 ```txt
-hr-core/data/raw/osm/geofabrik/cyprus-latest.osm.pbf
-hr-core/data/raw/osm/geofabrik/cyprus-latest-free.gpkg/cyprus.gpkg
+POST {{baseUrl}}/geo-data/hotel-candidates/match/auto
+POST {{baseUrl}}/geo-data/hotel-candidates/match/manual
 ```
 
-They should be kept for later.
-
-### PBF later
-
-Use `osmium-tool` to extract repeatable local GeoJSON from the PBF.
-
-Example future flow:
-
-```txt
-cyprus-latest.osm.pbf -> osmium tags-filter -> filtered.osm.pbf -> osmium export -> filtered.geojson -> MongoDB import
-```
-
-This is useful when the project should stop depending on manual Overpass Turbo exports.
-
-### GPKG later
-
-Use QGIS for visual inspection.
-
-Use GDAL/OGR tools for exploration:
-
-```txt
-ogrinfo
-ogr2ogr
-```
-
-The GPKG is useful for GIS inspection and experiments, but it is not the preferred first input for the NestJS importer.
-
-## Implementation roadmap
-
-Implement geo data processing as a separate domain pipeline, not as another
-stage inside the existing hotel ingestion pipeline.
-
-Reason: geo imports manage external spatial source data, source lifecycle,
-hash-based source changes and later hotel matching. They should not be coupled
-to `raw_hotels -> hotel_registry_entries -> canonical_hotel_candidates ->
-canonical_hotels` processing runs.
-
-### Step 1: Base geo models
-
-Create feature-local modules for:
-
-```txt
-geo-import-runs
-hotel-geo-candidates
-beach-profiles
-```
-
-Optionally create `geo-data-processing` as the orchestration/controller feature
-that coordinates import use cases.
-
-Add feature-local enums/constants for:
-
-```txt
-source type
-source dataset
-import kind
-import status
-lifecycle status
-hotel geo match status
-geometry kind
-beach quality status
-beach quality confidence
-```
-
-Create Mongoose schemas and indexes for:
-
-```txt
-geo_import_runs
-hotel_geo_candidates
-beach_profiles
-```
-
-Keep interfaces under feature-local `types/` directories and constants/enums
-under feature-local `constants/` directories.
-
-### Step 2: Shared GeoJSON import core
-
-Implement a small reusable GeoJSON import core for local files.
-
-Responsibilities:
-
-1. Read a GeoJSON `FeatureCollection` from a local file path.
-2. Validate that every processed feature has `feature.id` or
-   `feature.properties["@id"]`.
-3. Normalize the feature name when present.
-4. Store the source geometry.
-5. Compute a representative `Point`.
-6. Store `sourceProperties`.
-7. Compute `propertiesHash` and `geometryHash`.
-8. Upsert by `{ source.type, source.dataset, source.id }`.
-9. Update `geo_import_runs.stats`.
-
-For the first implementation, support only Overpass GeoJSON files. Do not parse
-PBF or GPKG yet.
-
-### Step 3: OSM hotel candidate import
-
-Import:
-
-```txt
-hr-core/data/raw/osm/overpass/hotels.geojson
-```
-
-into:
-
-```txt
-hotel_geo_candidates
-```
-
-New records start as:
-
-```txt
-matchStatus = UNMATCHED
-canonicalHotelId = null
-componentId = null
-lifecycle.status = ACTIVE
-```
-
-This step must not write to `canonical_hotels`.
-
-### Step 4: OSM beach import
-
-Import:
-
-```txt
-hr-core/data/raw/osm/overpass/beaches.geojson
-```
-
-into:
-
-```txt
-beach_profiles
-```
-
-Beach import additionally computes:
-
-```txt
-geometryKind
-beachType
-quality.status
-quality.confidence
-```
-
-For the first version, imported beaches can start with:
-
-```txt
-quality.status = RAW
-quality.confidence = MEDIUM
-lifecycle.status = ACTIVE
-```
-
-### Step 5: Source lifecycle updates
-
-Every import run should compare the latest source ids and hashes with existing
-documents for the same source type, dataset and import kind.
-
-Rules:
-
-- New source ids are inserted as `ACTIVE`.
-- Existing source ids update `lastSeenAt`.
-- Hash changes update the stored source document and increment updated stats.
-- Missing old source ids are marked `STALE`.
-- Do not delete records that disappeared from the source.
-- Keep `REMOVED_FROM_SOURCE` for a later version after several import cycles can
-  be evaluated.
-
-If a confirmed hotel geo candidate changes later, do not silently overwrite
-`canonical_hotels.geo`. Mark the canonical hotel geo summary as changed and
-requiring review.
-
-### Step 6: Read-only inspection endpoints
-
-Add read-only endpoints in the first version so imports can be inspected before
-matching is implemented.
-
-The importer should expose:
-
-```txt
-run list
-run detail
-hotel candidate list
-hotel candidate detail
-hotel candidate stats
-beach list
-beach detail
-beach stats
-```
-
-### Step 7: Hotel geo matching
-
-Implement matching only after the import data quality is visible.
-
-Matching input:
-
-```txt
-canonical_hotels
-hotel_geo_candidates
-```
-
-Matching output:
-
-```txt
-hotel_geo_candidates.canonicalHotelId
-hotel_geo_candidates.componentId
-hotel_geo_candidates.matchStatus
-hotel_geo_candidates.matchReasons
-canonical_hotels.geo
-```
-
-The first matching version should be conservative and review-driven. It should
-not merge or confirm hotel geo points from weak signals.
-
-## Suggested admin endpoints
-
-Recommended first version:
-
-```txt
-DONE POST /geo-imports/runs/osm-overpass/hotels
-DONE POST /geo-imports/runs/osm-overpass/beaches
-DONE GET  /geo-imports/runs
-DONE GET  /geo-imports/runs/:runId
-
-DONE GET  /geo-data/hotel-candidates
-DONE GET  /geo-data/hotel-candidates/:id
-DONE GET  /geo-data/hotel-candidates/stats
-
-DONE GET  /geo-data/beaches
-DONE GET  /geo-data/beaches/:id
-DONE GET  /geo-data/beaches/stats
-```
-
-Recommended list filters:
-
-```txt
-sourceType
-sourceDataset
-lifecycleStatus
-matchStatus
-q
-limit
-offset
-```
-
-Example:
-
-```txt
-GET /geo-data/hotel-candidates?sourceType=OSM&sourceDataset=OVERPASS_TURBO&matchStatus=UNMATCHED&q=anassa&limit=50&offset=0
-```
-
-Later matching endpoints:
-
-```txt
-POST /geo-matching/runs/osm-hotel-candidates
-GET  /geo-matching/runs/:runId
-GET  /geo-matching/review/hotel-candidates
-POST /geo-matching/hotel-candidates/:id/confirm
-POST /geo-matching/hotel-candidates/:id/reject
-```
-
-Later source endpoints:
-
-```txt
-POST /geo-imports/runs/osm-geofabrik/extract-hotels
-POST /geo-imports/runs/osm-geofabrik/extract-beaches
-POST /geo-imports/runs/fsq/cyprus
-```
-
-## Minimal first implementation scope
-
-The recommended first implementation scope is:
-
-1. DONE Verify that the expected source files exist at the paths listed in this
-   document.
-2. DONE Create `geo_import_runs` collection and indexes.
-3. DONE Create `hotel_geo_candidates` collection and indexes.
-4. DONE Create `beach_profiles` collection and indexes.
-5. DONE Implement import from `hotels.geojson` into `hotel_geo_candidates`.
-6. DONE Implement import from `beaches.geojson` into `beach_profiles`.
-7. DONE Add duplicate-safe upsert by source id.
-8. DONE Add import stats.
-9. DONE Add lifecycle fields and hash comparison.
-10. Add read-only list/detail/stats endpoints.
-11. DONE Do not implement hotel matching yet.
-
-## Immediate next step
-
-The next practical task is not matching.
-
-The next practical task is importing these two files into MongoDB:
-
-```txt
-hr-core/data/raw/osm/overpass/hotels.geojson
-hr-core/data/raw/osm/overpass/beaches.geojson
-```
-
-After import, generate stats:
-
-```txt
-hotel_geo_candidates count by tourism tag
-hotel_geo_candidates count with name
-hotel_geo_candidates count with phone
-hotel_geo_candidates count with website
-beach_profiles count by geometryKind
-beach_profiles count with name
-```
-
-Only after that should the project proceed to hotel matching and beach accessibility calculations.
+Include example bodies for:
+
+- automatic match with `{ "dryRun": true }`;
+- automatic match with `{ "dryRun": false }`;
+- manual match with `hotelGeoCandidateId`, `canonicalHotelId`, and `componentId: null`.
+
+## Implementation Order
+
+1. Add failing unit tests for normalization and matching decision rules.
+2. Implement `geo-matching` normalization utilities and shared-domain filtering.
+3. Add service read methods needed to build a canonical hotel match index and candidate list.
+4. Add automatic matching use case with dry-run-capable decision reporting.
+5. Add automatic matching endpoint.
+6. Add automatic matching Postman request.
+7. Stop for manual testing.
+8. Add failing tests for manual matching.
+9. Implement manual matching use case and conflict errors.
+10. Add manual matching endpoint.
+11. Add manual matching Postman request.
+12. Run the targeted test suite.
+13. Run the full `hr-core` test suite if time and environment allow.
+
+## Open Policy Decision
+
+The first implementation should not support forced overwrite.
+
+If a canonical hotel or candidate is already matched differently, the endpoint should return a `409` conflict and force the user to inspect the data. A later reviewed endpoint can support explicit unmatch/rematch if needed.
