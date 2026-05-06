@@ -1,0 +1,6 @@
+export enum GEO_IMPORT_KIND {
+  HOTELS = 'HOTELS',
+  BEACHES = 'BEACHES',
+  FULL_EXTRACT = 'FULL_EXTRACT',
+  POI = 'POI',
+}

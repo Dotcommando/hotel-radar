@@ -304,6 +304,76 @@
       "response": []
     },
     {
+      "name": "Geo Import. OSM Overpass hotels",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "const response = pm.response.json();",
+              "",
+              "if (response.runId) {",
+              "  pm.environment.set('geoImportRunId', response.runId);",
+              "  pm.collectionVariables.set('geoImportRunId', response.runId);",
+              "}"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "auth": {
+          "type": "noauth"
+        },
+        "method": "POST",
+        "header": [],
+        "body": {
+          "mode": "raw",
+          "raw": "",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "{{hrCoreBaseUrl}}/geo-imports/runs/osm-overpass/hotels",
+          "host": [
+            "{{hrCoreBaseUrl}}"
+          ],
+          "path": [
+            "geo-imports",
+            "runs",
+            "osm-overpass",
+            "hotels"
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Geo Import. Check Run by Id",
+      "request": {
+        "auth": {
+          "type": "noauth"
+        },
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{hrCoreBaseUrl}}/geo-imports/runs/{{geoImportRunId}}",
+          "host": [
+            "{{hrCoreBaseUrl}}"
+          ],
+          "path": [
+            "geo-imports",
+            "runs",
+            "{{geoImportRunId}}"
+          ]
+        }
+      },
+      "response": []
+    },
+    {
       "name": "Check Run by Id",
       "request": {
         "auth": {
@@ -334,6 +404,11 @@
     },
     {
       "key": "runId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "geoImportRunId",
       "value": "",
       "type": "string"
     }
