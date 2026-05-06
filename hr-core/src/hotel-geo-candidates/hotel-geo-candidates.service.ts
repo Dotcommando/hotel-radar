@@ -8,6 +8,7 @@ import { HOTEL_GEO_CANDIDATE_MATCH_STATUS } from './constants/hotel-geo-candidat
 import { HOTEL_GEO_CANDIDATE_MODEL_NAME } from './constants/hotel-geo-candidate-model-name.constant';
 import { HOTEL_GEO_CANDIDATE_UPSERT_RESULT } from './constants/hotel-geo-candidate-upsert-result.enum';
 import { IHotelGeoCandidate } from './types/hotel-geo-candidate.interface';
+import { IHotelGeoCandidateListFilters } from './types/hotel-geo-candidate-list-filters.interface';
 import { IHotelGeoCandidatesStats } from './types/hotel-geo-candidates-stats.interface';
 import { IUpsertOsmOverpassHotelGeoCandidate } from './types/upsert-osm-overpass-hotel-geo-candidate.interface';
 
@@ -138,6 +139,38 @@ export class HotelGeoCandidatesService {
     return result.modifiedCount;
   }
 
+  async findById(id: string): Promise<IHotelGeoCandidate | null> {
+    if (!Types.ObjectId.isValid(id)) {
+      return null;
+    }
+
+    return this.hotelGeoCandidateModel
+      .findById(new Types.ObjectId(id))
+      .exec();
+  }
+
+  async countByFilters(
+    filters: IHotelGeoCandidateListFilters,
+  ): Promise<number> {
+    return this.hotelGeoCandidateModel
+      .countDocuments(this.buildListFilter(filters))
+      .exec();
+  }
+
+  async listByFilters(
+    filters: IHotelGeoCandidateListFilters,
+  ): Promise<IHotelGeoCandidate[]> {
+    return this.hotelGeoCandidateModel
+      .find(this.buildListFilter(filters))
+      .sort({
+        updatedAt: -1,
+        _id: 1,
+      })
+      .skip(filters.offset)
+      .limit(filters.limit)
+      .exec();
+  }
+
   async getStats(): Promise<IHotelGeoCandidatesStats> {
     const [
       total,
@@ -237,6 +270,53 @@ export class HotelGeoCandidatesService {
       .exec();
   }
 
+  private buildListFilter(
+    filters: IHotelGeoCandidateListFilters,
+  ): Record<string, unknown> {
+    const filter: Record<string, unknown> = {};
+
+    if (filters.sourceType !== undefined) {
+      filter['source.type'] = filters.sourceType;
+    }
+
+    if (filters.sourceDataset !== undefined) {
+      filter['source.dataset'] = filters.sourceDataset;
+    }
+
+    if (filters.lifecycleStatus !== undefined) {
+      filter['lifecycle.status'] = filters.lifecycleStatus;
+    }
+
+    if (filters.matchStatus !== undefined) {
+      filter.matchStatus = filters.matchStatus;
+    }
+
+    if (filters.q !== undefined) {
+      filter.$or = [
+        {
+          name: {
+            $options: 'i',
+            $regex: this.escapeRegExp(filters.q),
+          },
+        },
+        {
+          normalizedName: {
+            $options: 'i',
+            $regex: this.escapeRegExp(filters.q),
+          },
+        },
+        {
+          'source.id': {
+            $options: 'i',
+            $regex: this.escapeRegExp(filters.q),
+          },
+        },
+      ];
+    }
+
+    return filter;
+  }
+
   private existsNonEmptySourcePropertyFilter(
     key: string,
   ): Record<string, unknown> {
@@ -260,5 +340,9 @@ export class HotelGeoCandidatesService {
 
   private readCount(rows: IStringCountAggregationResult[], key: string): number {
     return rows.find((row) => row._id === key)?.count ?? 0;
+  }
+
+  private escapeRegExp(value: string): string {
+    return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   }
 }

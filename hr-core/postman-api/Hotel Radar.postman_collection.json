@@ -465,6 +465,178 @@
       "response": []
     },
     {
+      "name": "Geo Data. Hotel candidates list",
+      "request": {
+        "auth": {
+          "type": "noauth"
+        },
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{hrCoreBaseUrl}}/geo-data/hotel-candidates?sourceType=OSM&sourceDataset=OVERPASS_TURBO&matchStatus=UNMATCHED&limit=50&offset=0",
+          "host": [
+            "{{hrCoreBaseUrl}}"
+          ],
+          "path": [
+            "geo-data",
+            "hotel-candidates"
+          ],
+          "query": [
+            {
+              "key": "sourceType",
+              "value": "OSM"
+            },
+            {
+              "key": "sourceDataset",
+              "value": "OVERPASS_TURBO"
+            },
+            {
+              "key": "lifecycleStatus",
+              "value": "ACTIVE",
+              "disabled": true
+            },
+            {
+              "key": "matchStatus",
+              "value": "UNMATCHED"
+            },
+            {
+              "key": "q",
+              "value": "anassa",
+              "disabled": true
+            },
+            {
+              "key": "limit",
+              "value": "50"
+            },
+            {
+              "key": "offset",
+              "value": "0"
+            }
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Geo Data. Hotel candidate by Id",
+      "request": {
+        "auth": {
+          "type": "noauth"
+        },
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{hrCoreBaseUrl}}/geo-data/hotel-candidates/{{hotelGeoCandidateId}}",
+          "host": [
+            "{{hrCoreBaseUrl}}"
+          ],
+          "path": [
+            "geo-data",
+            "hotel-candidates",
+            "{{hotelGeoCandidateId}}"
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Geo Data. Beaches stats",
+      "request": {
+        "auth": {
+          "type": "noauth"
+        },
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{hrCoreBaseUrl}}/geo-data/beaches/stats",
+          "host": [
+            "{{hrCoreBaseUrl}}"
+          ],
+          "path": [
+            "geo-data",
+            "beaches",
+            "stats"
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Geo Data. Beaches list",
+      "request": {
+        "auth": {
+          "type": "noauth"
+        },
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{hrCoreBaseUrl}}/geo-data/beaches?sourceType=OSM&sourceDataset=OVERPASS_TURBO&geometryKind=AREA&limit=50&offset=0",
+          "host": [
+            "{{hrCoreBaseUrl}}"
+          ],
+          "path": [
+            "geo-data",
+            "beaches"
+          ],
+          "query": [
+            {
+              "key": "sourceType",
+              "value": "OSM"
+            },
+            {
+              "key": "sourceDataset",
+              "value": "OVERPASS_TURBO"
+            },
+            {
+              "key": "lifecycleStatus",
+              "value": "ACTIVE",
+              "disabled": true
+            },
+            {
+              "key": "geometryKind",
+              "value": "AREA"
+            },
+            {
+              "key": "q",
+              "value": "fig",
+              "disabled": true
+            },
+            {
+              "key": "limit",
+              "value": "50"
+            },
+            {
+              "key": "offset",
+              "value": "0"
+            }
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Geo Data. Beach by Id",
+      "request": {
+        "auth": {
+          "type": "noauth"
+        },
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{hrCoreBaseUrl}}/geo-data/beaches/{{beachProfileId}}",
+          "host": [
+            "{{hrCoreBaseUrl}}"
+          ],
+          "path": [
+            "geo-data",
+            "beaches",
+            "{{beachProfileId}}"
+          ]
+        }
+      },
+      "response": []
+    },
+    {
       "name": "Check Run by Id",
       "request": {
         "auth": {
@@ -500,6 +672,16 @@
     },
     {
       "key": "geoImportRunId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "hotelGeoCandidateId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "beachProfileId",
       "value": "",
       "type": "string"
     }

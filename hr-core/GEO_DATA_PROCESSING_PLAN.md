@@ -888,13 +888,13 @@ DONE POST /geo-imports/runs/osm-overpass/beaches
 DONE GET  /geo-imports/runs
 DONE GET  /geo-imports/runs/:runId
 
-GET  /geo-data/hotel-candidates
-GET  /geo-data/hotel-candidates/:id
+DONE GET  /geo-data/hotel-candidates
+DONE GET  /geo-data/hotel-candidates/:id
 DONE GET  /geo-data/hotel-candidates/stats
 
-GET  /geo-data/beaches
-GET  /geo-data/beaches/:id
-GET  /geo-data/beaches/stats
+DONE GET  /geo-data/beaches
+DONE GET  /geo-data/beaches/:id
+DONE GET  /geo-data/beaches/stats
 ```
 
 Recommended list filters:
