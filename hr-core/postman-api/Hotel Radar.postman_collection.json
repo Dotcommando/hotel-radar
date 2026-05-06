@@ -7,730 +7,782 @@
   },
   "item": [
     {
-      "name": "Stage 2. Process raw hotels to registry entries",
-      "event": [
+      "name": "Parsing",
+      "item": [
         {
-          "listen": "test",
-          "script": {
-            "exec": [
-              "const response = pm.response.json();",
-              "",
-              "if (response.runId) {",
-              "  pm.environment.set('runId', response.runId);",
-              "  pm.collectionVariables.set('runId', response.runId);",
-              "}"
-            ],
-            "type": "text/javascript"
-          }
-        }
-      ],
-      "request": {
-        "auth": {
-          "type": "noauth"
-        },
-        "method": "POST",
-        "header": [],
-        "body": {
-          "mode": "raw",
-          "raw": "",
-          "options": {
-            "raw": {
-              "language": "json"
+          "name": "Stage 1. Receive and parse PDF from www.gov.cy",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const response = pm.response.json();",
+                  "",
+                  "if (response.runId) {",
+                  "  pm.environment.set('runId', response.runId);",
+                  "  pm.collectionVariables.set('runId', response.runId);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
             }
-          }
-        },
-        "url": {
-          "raw": "{{hrCoreBaseUrl}}/hotel-processing/runs/raw-to-registry",
-          "host": [
-            "{{hrCoreBaseUrl}}"
           ],
-          "path": [
-            "hotel-processing",
-            "runs",
-            "raw-to-registry"
-          ]
-        }
-      },
-      "response": []
-    },
-    {
-      "name": "Stage 3. Process registry entries to candidates",
-      "event": [
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{hrCoreBaseUrl}}/gov-cy-pdf-hotels/parse",
+              "host": [
+                "{{hrCoreBaseUrl}}"
+              ],
+              "path": [
+                "gov-cy-pdf-hotels",
+                "parse"
+              ]
+            }
+          },
+          "response": []
+        },
         {
-          "listen": "test",
-          "script": {
-            "exec": [
-              "const response = pm.response.json();",
-              "",
-              "if (response.runId) {",
-              "  pm.environment.set('runId', response.runId);",
-              "  pm.collectionVariables.set('runId', response.runId);",
-              "}"
-            ],
-            "type": "text/javascript"
-          }
-        }
-      ],
-      "request": {
-        "auth": {
-          "type": "noauth"
-        },
-        "method": "POST",
-        "header": [],
-        "body": {
-          "mode": "raw",
-          "raw": "",
-          "options": {
-            "raw": {
-              "language": "json"
+          "name": "Stage 2. Process raw hotels to registry entries",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const response = pm.response.json();",
+                  "",
+                  "if (response.runId) {",
+                  "  pm.environment.set('runId', response.runId);",
+                  "  pm.collectionVariables.set('runId', response.runId);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
             }
-          }
-        },
-        "url": {
-          "raw": "{{hrCoreBaseUrl}}/hotel-processing/runs/registry-to-candidates",
-          "host": [
-            "{{hrCoreBaseUrl}}"
           ],
-          "path": [
-            "hotel-processing",
-            "runs",
-            "registry-to-candidates"
-          ]
-        }
-      },
-      "response": []
-    },
-    {
-      "name": "Stage 4. Process candidates to canonical hotels",
-      "event": [
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{hrCoreBaseUrl}}/hotel-processing/runs/raw-to-registry",
+              "host": [
+                "{{hrCoreBaseUrl}}"
+              ],
+              "path": [
+                "hotel-processing",
+                "runs",
+                "raw-to-registry"
+              ]
+            }
+          },
+          "response": []
+        },
         {
-          "listen": "test",
-          "script": {
-            "exec": [
-              "const response = pm.response.json();",
-              "",
-              "if (response.runId) {",
-              "  pm.environment.set('runId', response.runId);",
-              "  pm.collectionVariables.set('runId', response.runId);",
-              "}"
-            ],
-            "type": "text/javascript"
-          }
-        }
-      ],
-      "request": {
-        "auth": {
-          "type": "noauth"
-        },
-        "method": "POST",
-        "header": [],
-        "body": {
-          "mode": "raw",
-          "raw": "",
-          "options": {
-            "raw": {
-              "language": "json"
+          "name": "Stage 3. Process registry entries to candidates",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const response = pm.response.json();",
+                  "",
+                  "if (response.runId) {",
+                  "  pm.environment.set('runId', response.runId);",
+                  "  pm.collectionVariables.set('runId', response.runId);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
             }
-          }
-        },
-        "url": {
-          "raw": "{{hrCoreBaseUrl}}/hotel-processing/runs/candidates-to-canonical",
-          "host": [
-            "{{hrCoreBaseUrl}}"
           ],
-          "path": [
-            "hotel-processing",
-            "runs",
-            "candidates-to-canonical"
-          ]
-        }
-      },
-      "response": []
-    },
-    {
-      "name": "Stage 4. Retry review-required candidates",
-      "event": [
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{hrCoreBaseUrl}}/hotel-processing/runs/registry-to-candidates",
+              "host": [
+                "{{hrCoreBaseUrl}}"
+              ],
+              "path": [
+                "hotel-processing",
+                "runs",
+                "registry-to-candidates"
+              ]
+            }
+          },
+          "response": []
+        },
         {
-          "listen": "test",
-          "script": {
-            "exec": [
-              "const response = pm.response.json();",
-              "",
-              "if (response.runId) {",
-              "  pm.environment.set('runId', response.runId);",
-              "  pm.collectionVariables.set('runId', response.runId);",
-              "}"
-            ],
-            "type": "text/javascript"
-          }
-        }
-      ],
-      "request": {
-        "auth": {
-          "type": "noauth"
-        },
-        "method": "POST",
-        "header": [],
-        "body": {
-          "mode": "raw",
-          "raw": "",
-          "options": {
-            "raw": {
-              "language": "json"
+          "name": "Stage 4. Process candidates to canonical hotels",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const response = pm.response.json();",
+                  "",
+                  "if (response.runId) {",
+                  "  pm.environment.set('runId', response.runId);",
+                  "  pm.collectionVariables.set('runId', response.runId);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
             }
-          }
-        },
-        "url": {
-          "raw": "{{hrCoreBaseUrl}}/hotel-processing/runs/candidates-to-canonical/retry-review-required",
-          "host": [
-            "{{hrCoreBaseUrl}}"
           ],
-          "path": [
-            "hotel-processing",
-            "runs",
-            "candidates-to-canonical",
-            "retry-review-required"
-          ]
-        }
-      },
-      "response": []
-    },
-    {
-      "name": "Rollback to Stage 2",
-      "request": {
-        "auth": {
-          "type": "noauth"
-        },
-        "method": "POST",
-        "header": [],
-        "body": {
-          "mode": "raw",
-          "raw": "",
-          "options": {
-            "raw": {
-              "language": "json"
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{hrCoreBaseUrl}}/hotel-processing/runs/candidates-to-canonical",
+              "host": [
+                "{{hrCoreBaseUrl}}"
+              ],
+              "path": [
+                "hotel-processing",
+                "runs",
+                "candidates-to-canonical"
+              ]
             }
-          }
+          },
+          "response": []
         },
-        "url": {
-          "raw": "{{hrCoreBaseUrl}}/hotel-processing/rollback/stage-2",
-          "host": [
-            "{{hrCoreBaseUrl}}"
-          ],
-          "path": [
-            "hotel-processing",
-            "rollback",
-            "stage-2"
-          ]
-        }
-      },
-      "response": []
-    },
-    {
-      "name": "Rollback to Stage 1",
-      "request": {
-        "auth": {
-          "type": "noauth"
-        },
-        "method": "POST",
-        "header": [],
-        "body": {
-          "mode": "raw",
-          "raw": "",
-          "options": {
-            "raw": {
-              "language": "json"
-            }
-          }
-        },
-        "url": {
-          "raw": "{{hrCoreBaseUrl}}/hotel-processing/rollback/stage-1",
-          "host": [
-            "{{hrCoreBaseUrl}}"
-          ],
-          "path": [
-            "hotel-processing",
-            "rollback",
-            "stage-1"
-          ]
-        }
-      },
-      "response": []
-    },
-    {
-      "name": "Stage 1. Receive and parse PDF from www.gov.cy",
-      "event": [
         {
-          "listen": "test",
-          "script": {
-            "exec": [
-              "const response = pm.response.json();",
-              "",
-              "if (response.runId) {",
-              "  pm.environment.set('runId', response.runId);",
-              "  pm.collectionVariables.set('runId', response.runId);",
-              "}"
-            ],
-            "type": "text/javascript"
-          }
-        }
-      ],
-      "request": {
-        "auth": {
-          "type": "noauth"
-        },
-        "method": "POST",
-        "header": [],
-        "body": {
-          "mode": "raw",
-          "raw": "",
-          "options": {
-            "raw": {
-              "language": "json"
+          "name": "Stage 4. Retry review-required candidates",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const response = pm.response.json();",
+                  "",
+                  "if (response.runId) {",
+                  "  pm.environment.set('runId', response.runId);",
+                  "  pm.collectionVariables.set('runId', response.runId);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
             }
-          }
-        },
-        "url": {
-          "raw": "{{hrCoreBaseUrl}}/gov-cy-pdf-hotels/parse",
-          "host": [
-            "{{hrCoreBaseUrl}}"
           ],
-          "path": [
-            "gov-cy-pdf-hotels",
-            "parse"
-          ]
-        }
-      },
-      "response": []
-    },
-    {
-      "name": "Geo Import. OSM Overpass hotels",
-      "event": [
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{hrCoreBaseUrl}}/hotel-processing/runs/candidates-to-canonical/retry-review-required",
+              "host": [
+                "{{hrCoreBaseUrl}}"
+              ],
+              "path": [
+                "hotel-processing",
+                "runs",
+                "candidates-to-canonical",
+                "retry-review-required"
+              ]
+            }
+          },
+          "response": []
+        },
         {
-          "listen": "test",
-          "script": {
-            "exec": [
-              "const response = pm.response.json();",
-              "",
-              "if (response.runId) {",
-              "  pm.environment.set('geoImportRunId', response.runId);",
-              "  pm.collectionVariables.set('geoImportRunId', response.runId);",
-              "}"
-            ],
-            "type": "text/javascript"
-          }
-        }
-      ],
-      "request": {
-        "auth": {
-          "type": "noauth"
-        },
-        "method": "POST",
-        "header": [],
-        "body": {
-          "mode": "raw",
-          "raw": "",
-          "options": {
-            "raw": {
-              "language": "json"
+          "name": "Rollback to Stage 2",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{hrCoreBaseUrl}}/hotel-processing/rollback/stage-2",
+              "host": [
+                "{{hrCoreBaseUrl}}"
+              ],
+              "path": [
+                "hotel-processing",
+                "rollback",
+                "stage-2"
+              ]
             }
-          }
+          },
+          "response": []
         },
-        "url": {
-          "raw": "{{hrCoreBaseUrl}}/geo-imports/runs/osm-overpass/hotels",
-          "host": [
-            "{{hrCoreBaseUrl}}"
-          ],
-          "path": [
-            "geo-imports",
-            "runs",
-            "osm-overpass",
-            "hotels"
-          ]
-        }
-      },
-      "response": []
-    },
-    {
-      "name": "Geo Import. OSM Overpass beaches",
-      "event": [
         {
-          "listen": "test",
-          "script": {
-            "exec": [
-              "const response = pm.response.json();",
-              "",
-              "if (response.runId) {",
-              "  pm.environment.set('geoImportRunId', response.runId);",
-              "  pm.collectionVariables.set('geoImportRunId', response.runId);",
-              "}"
+          "name": "Rollback to Stage 1",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{hrCoreBaseUrl}}/hotel-processing/rollback/stage-1",
+              "host": [
+                "{{hrCoreBaseUrl}}"
+              ],
+              "path": [
+                "hotel-processing",
+                "rollback",
+                "stage-1"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Check Run by Id",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{hrCoreBaseUrl}}/hotel-processing/runs/{{runId}}",
+              "host": [
+                "{{hrCoreBaseUrl}}"
+              ],
+              "path": [
+                "hotel-processing",
+                "runs",
+                "{{runId}}"
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Geo",
+      "item": [
+        {
+          "name": "Import. OSM Overpass hotels",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const response = pm.response.json();",
+                  "",
+                  "if (response.runId) {",
+                  "  pm.environment.set('geoImportRunId', response.runId);",
+                  "  pm.collectionVariables.set('geoImportRunId', response.runId);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{hrCoreBaseUrl}}/geo-imports/runs/osm-overpass/hotels",
+              "host": [
+                "{{hrCoreBaseUrl}}"
+              ],
+              "path": [
+                "geo-imports",
+                "runs",
+                "osm-overpass",
+                "hotels"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Import. OSM Overpass beaches",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const response = pm.response.json();",
+                  "",
+                  "if (response.runId) {",
+                  "  pm.environment.set('geoImportRunId', response.runId);",
+                  "  pm.collectionVariables.set('geoImportRunId', response.runId);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{hrCoreBaseUrl}}/geo-imports/runs/osm-overpass/beaches",
+              "host": [
+                "{{hrCoreBaseUrl}}"
+              ],
+              "path": [
+                "geo-imports",
+                "runs",
+                "osm-overpass",
+                "beaches"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Import. Check Run by Id",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{hrCoreBaseUrl}}/geo-imports/runs/{{geoImportRunId}}",
+              "host": [
+                "{{hrCoreBaseUrl}}"
+              ],
+              "path": [
+                "geo-imports",
+                "runs",
+                "{{geoImportRunId}}"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Import. List Runs",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{hrCoreBaseUrl}}/geo-imports/runs",
+              "host": [
+                "{{hrCoreBaseUrl}}"
+              ],
+              "path": [
+                "geo-imports",
+                "runs"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Data. Hotel candidates stats",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{hrCoreBaseUrl}}/geo-data/hotel-candidates/stats",
+              "host": [
+                "{{hrCoreBaseUrl}}"
+              ],
+              "path": [
+                "geo-data",
+                "hotel-candidates",
+                "stats"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Data. Hotel candidates list",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{hrCoreBaseUrl}}/geo-data/hotel-candidates?sourceType=OSM&sourceDataset=OVERPASS_TURBO&matchStatus=UNMATCHED&limit=50&offset=0",
+              "host": [
+                "{{hrCoreBaseUrl}}"
+              ],
+              "path": [
+                "geo-data",
+                "hotel-candidates"
+              ],
+              "query": [
+                {
+                  "key": "sourceType",
+                  "value": "OSM"
+                },
+                {
+                  "key": "sourceDataset",
+                  "value": "OVERPASS_TURBO"
+                },
+                {
+                  "key": "lifecycleStatus",
+                  "value": "ACTIVE",
+                  "disabled": true
+                },
+                {
+                  "key": "matchStatus",
+                  "value": "UNMATCHED"
+                },
+                {
+                  "key": "q",
+                  "value": "anassa",
+                  "disabled": true
+                },
+                {
+                  "key": "limit",
+                  "value": "50"
+                },
+                {
+                  "key": "offset",
+                  "value": "0"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Data. Hotel candidate by query Id",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{hrCoreBaseUrl}}/geo-data/hotel-candidates/by-id?id={{hotelGeoCandidateId}}",
+              "host": [
+                "{{hrCoreBaseUrl}}"
+              ],
+              "path": [
+                "geo-data",
+                "hotel-candidates",
+                "by-id"
+              ],
+              "query": [
+                {
+                  "key": "id",
+                  "value": "{{hotelGeoCandidateId}}"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Data. Canonical hotels without geo candidates",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{hrCoreBaseUrl}}/geo-data/canonical-hotels/without-geo-candidates?includeSuggestions=true&limit=50&offset=0&suggestionLimit=5",
+              "host": [
+                "{{hrCoreBaseUrl}}"
+              ],
+              "path": [
+                "geo-data",
+                "canonical-hotels",
+                "without-geo-candidates"
+              ],
+              "query": [
+                {
+                  "key": "includeSuggestions",
+                  "value": "true"
+                },
+                {
+                  "key": "limit",
+                  "value": "50"
+                },
+                {
+                  "key": "offset",
+                  "value": "0"
+                },
+                {
+                  "key": "suggestionLimit",
+                  "value": "5"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Matching. Auto-match hotel candidates",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
             ],
-            "type": "text/javascript"
-          }
-        }
-      ],
-      "request": {
-        "auth": {
-          "type": "noauth"
-        },
-        "method": "POST",
-        "header": [],
-        "body": {
-          "mode": "raw",
-          "raw": "",
-          "options": {
-            "raw": {
-              "language": "json"
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"dryRun\": false,\n  \"limit\": 0\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{hrCoreBaseUrl}}/geo-data/hotel-candidates/match/auto",
+              "host": [
+                "{{hrCoreBaseUrl}}"
+              ],
+              "path": [
+                "geo-data",
+                "hotel-candidates",
+                "match",
+                "auto"
+              ]
             }
-          }
+          },
+          "response": []
         },
-        "url": {
-          "raw": "{{hrCoreBaseUrl}}/geo-imports/runs/osm-overpass/beaches",
-          "host": [
-            "{{hrCoreBaseUrl}}"
-          ],
-          "path": [
-            "geo-imports",
-            "runs",
-            "osm-overpass",
-            "beaches"
-          ]
-        }
-      },
-      "response": []
-    },
-    {
-      "name": "Geo Import. Check Run by Id",
-      "request": {
-        "auth": {
-          "type": "noauth"
-        },
-        "method": "GET",
-        "header": [],
-        "url": {
-          "raw": "{{hrCoreBaseUrl}}/geo-imports/runs/{{geoImportRunId}}",
-          "host": [
-            "{{hrCoreBaseUrl}}"
-          ],
-          "path": [
-            "geo-imports",
-            "runs",
-            "{{geoImportRunId}}"
-          ]
-        }
-      },
-      "response": []
-    },
-    {
-      "name": "Geo Import. List Runs",
-      "request": {
-        "auth": {
-          "type": "noauth"
-        },
-        "method": "GET",
-        "header": [],
-        "url": {
-          "raw": "{{hrCoreBaseUrl}}/geo-imports/runs",
-          "host": [
-            "{{hrCoreBaseUrl}}"
-          ],
-          "path": [
-            "geo-imports",
-            "runs"
-          ]
-        }
-      },
-      "response": []
-    },
-    {
-      "name": "Geo Data. Hotel candidates stats",
-      "request": {
-        "auth": {
-          "type": "noauth"
-        },
-        "method": "GET",
-        "header": [],
-        "url": {
-          "raw": "{{hrCoreBaseUrl}}/geo-data/hotel-candidates/stats",
-          "host": [
-            "{{hrCoreBaseUrl}}"
-          ],
-          "path": [
-            "geo-data",
-            "hotel-candidates",
-            "stats"
-          ]
-        }
-      },
-      "response": []
-    },
-    {
-      "name": "Geo Data. Hotel candidates list",
-      "request": {
-        "auth": {
-          "type": "noauth"
-        },
-        "method": "GET",
-        "header": [],
-        "url": {
-          "raw": "{{hrCoreBaseUrl}}/geo-data/hotel-candidates?sourceType=OSM&sourceDataset=OVERPASS_TURBO&matchStatus=UNMATCHED&limit=50&offset=0",
-          "host": [
-            "{{hrCoreBaseUrl}}"
-          ],
-          "path": [
-            "geo-data",
-            "hotel-candidates"
-          ],
-          "query": [
-            {
-              "key": "sourceType",
-              "value": "OSM"
+        {
+          "name": "Data. Beaches stats",
+          "request": {
+            "auth": {
+              "type": "noauth"
             },
-            {
-              "key": "sourceDataset",
-              "value": "OVERPASS_TURBO"
-            },
-            {
-              "key": "lifecycleStatus",
-              "value": "ACTIVE",
-              "disabled": true
-            },
-            {
-              "key": "matchStatus",
-              "value": "UNMATCHED"
-            },
-            {
-              "key": "q",
-              "value": "anassa",
-              "disabled": true
-            },
-            {
-              "key": "limit",
-              "value": "50"
-            },
-            {
-              "key": "offset",
-              "value": "0"
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{hrCoreBaseUrl}}/geo-data/beaches/stats",
+              "host": [
+                "{{hrCoreBaseUrl}}"
+              ],
+              "path": [
+                "geo-data",
+                "beaches",
+                "stats"
+              ]
             }
-          ]
-        }
-      },
-      "response": []
-    },
-    {
-      "name": "Geo Data. Auto-match hotel candidates dry run",
-      "request": {
-        "auth": {
-          "type": "noauth"
+          },
+          "response": []
         },
-        "method": "POST",
-        "header": [
-          {
-            "key": "Content-Type",
-            "value": "application/json"
-          }
-        ],
-        "body": {
-          "mode": "raw",
-          "raw": "{\n  \"dryRun\": true,\n  \"limit\": 0\n}",
-          "options": {
-            "raw": {
-              "language": "json"
+        {
+          "name": "Data. Beaches list",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{hrCoreBaseUrl}}/geo-data/beaches?sourceType=OSM&sourceDataset=OVERPASS_TURBO&geometryKind=AREA&limit=50&offset=0",
+              "host": [
+                "{{hrCoreBaseUrl}}"
+              ],
+              "path": [
+                "geo-data",
+                "beaches"
+              ],
+              "query": [
+                {
+                  "key": "sourceType",
+                  "value": "OSM"
+                },
+                {
+                  "key": "sourceDataset",
+                  "value": "OVERPASS_TURBO"
+                },
+                {
+                  "key": "lifecycleStatus",
+                  "value": "ACTIVE",
+                  "disabled": true
+                },
+                {
+                  "key": "geometryKind",
+                  "value": "AREA"
+                },
+                {
+                  "key": "q",
+                  "value": "fig",
+                  "disabled": true
+                },
+                {
+                  "key": "limit",
+                  "value": "50"
+                },
+                {
+                  "key": "offset",
+                  "value": "0"
+                }
+              ]
             }
-          }
+          },
+          "response": []
         },
-        "url": {
-          "raw": "{{hrCoreBaseUrl}}/geo-data/hotel-candidates/match/auto",
-          "host": [
-            "{{hrCoreBaseUrl}}"
-          ],
-          "path": [
-            "geo-data",
-            "hotel-candidates",
-            "match",
-            "auto"
-          ]
-        }
-      },
-      "response": []
-    },
-    {
-      "name": "Geo Data. Auto-match hotel candidates",
-      "request": {
-        "auth": {
-          "type": "noauth"
-        },
-        "method": "POST",
-        "header": [
-          {
-            "key": "Content-Type",
-            "value": "application/json"
-          }
-        ],
-        "body": {
-          "mode": "raw",
-          "raw": "{\n  \"dryRun\": false,\n  \"limit\": 0\n}",
-          "options": {
-            "raw": {
-              "language": "json"
+        {
+          "name": "Data. Beach by Id",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{hrCoreBaseUrl}}/geo-data/beaches/{{beachProfileId}}",
+              "host": [
+                "{{hrCoreBaseUrl}}"
+              ],
+              "path": [
+                "geo-data",
+                "beaches",
+                "{{beachProfileId}}"
+              ]
             }
-          }
+          },
+          "response": []
         },
-        "url": {
-          "raw": "{{hrCoreBaseUrl}}/geo-data/hotel-candidates/match/auto",
-          "host": [
-            "{{hrCoreBaseUrl}}"
-          ],
-          "path": [
-            "geo-data",
-            "hotel-candidates",
-            "match",
-            "auto"
-          ]
-        }
-      },
-      "response": []
-    },
-    {
-      "name": "Geo Data. Hotel candidate by Id",
-      "request": {
-        "auth": {
-          "type": "noauth"
-        },
-        "method": "GET",
-        "header": [],
-        "url": {
-          "raw": "{{hrCoreBaseUrl}}/geo-data/hotel-candidates/{{hotelGeoCandidateId}}",
-          "host": [
-            "{{hrCoreBaseUrl}}"
-          ],
-          "path": [
-            "geo-data",
-            "hotel-candidates",
-            "{{hotelGeoCandidateId}}"
-          ]
-        }
-      },
-      "response": []
-    },
-    {
-      "name": "Geo Data. Beaches stats",
-      "request": {
-        "auth": {
-          "type": "noauth"
-        },
-        "method": "GET",
-        "header": [],
-        "url": {
-          "raw": "{{hrCoreBaseUrl}}/geo-data/beaches/stats",
-          "host": [
-            "{{hrCoreBaseUrl}}"
-          ],
-          "path": [
-            "geo-data",
-            "beaches",
-            "stats"
-          ]
-        }
-      },
-      "response": []
-    },
-    {
-      "name": "Geo Data. Beaches list",
-      "request": {
-        "auth": {
-          "type": "noauth"
-        },
-        "method": "GET",
-        "header": [],
-        "url": {
-          "raw": "{{hrCoreBaseUrl}}/geo-data/beaches?sourceType=OSM&sourceDataset=OVERPASS_TURBO&geometryKind=AREA&limit=50&offset=0",
-          "host": [
-            "{{hrCoreBaseUrl}}"
-          ],
-          "path": [
-            "geo-data",
-            "beaches"
-          ],
-          "query": [
-            {
-              "key": "sourceType",
-              "value": "OSM"
+        {
+          "name": "Matching. Manual match hotel candidate by ids",
+          "request": {
+            "auth": {
+              "type": "noauth"
             },
-            {
-              "key": "sourceDataset",
-              "value": "OVERPASS_TURBO"
-            },
-            {
-              "key": "lifecycleStatus",
-              "value": "ACTIVE",
-              "disabled": true
-            },
-            {
-              "key": "geometryKind",
-              "value": "AREA"
-            },
-            {
-              "key": "q",
-              "value": "fig",
-              "disabled": true
-            },
-            {
-              "key": "limit",
-              "value": "50"
-            },
-            {
-              "key": "offset",
-              "value": "0"
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{hrCoreBaseUrl}}/geo-matching/hotel-candidates/match/by-id?canonicalHotelId={{canonicalHotelId}}&hotelGeoCandidateId={{hotelGeoCandidateId}}",
+              "host": [
+                "{{hrCoreBaseUrl}}"
+              ],
+              "path": [
+                "geo-matching",
+                "hotel-candidates",
+                "match",
+                "by-id"
+              ],
+              "query": [
+                {
+                  "key": "canonicalHotelId",
+                  "value": "{{canonicalHotelId}}"
+                },
+                {
+                  "key": "hotelGeoCandidateId",
+                  "value": "{{hotelGeoCandidateId}}"
+                }
+              ]
             }
-          ]
+          },
+          "response": []
         }
-      },
-      "response": []
-    },
-    {
-      "name": "Geo Data. Beach by Id",
-      "request": {
-        "auth": {
-          "type": "noauth"
-        },
-        "method": "GET",
-        "header": [],
-        "url": {
-          "raw": "{{hrCoreBaseUrl}}/geo-data/beaches/{{beachProfileId}}",
-          "host": [
-            "{{hrCoreBaseUrl}}"
-          ],
-          "path": [
-            "geo-data",
-            "beaches",
-            "{{beachProfileId}}"
-          ]
-        }
-      },
-      "response": []
-    },
-    {
-      "name": "Check Run by Id",
-      "request": {
-        "auth": {
-          "type": "noauth"
-        },
-        "method": "GET",
-        "header": [],
-        "url": {
-          "raw": "{{hrCoreBaseUrl}}/hotel-processing/runs/{{runId}}",
-          "host": [
-            "{{hrCoreBaseUrl}}"
-          ],
-          "path": [
-            "hotel-processing",
-            "runs",
-            "{{runId}}"
-          ]
-        }
-      },
-      "response": []
+      ]
     }
   ],
   "variable": [
@@ -756,6 +808,11 @@
     },
     {
       "key": "beachProfileId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "canonicalHotelId",
       "value": "",
       "type": "string"
     }

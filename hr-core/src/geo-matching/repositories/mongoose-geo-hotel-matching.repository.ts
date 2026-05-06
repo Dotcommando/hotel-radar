@@ -9,6 +9,7 @@ import { HOTEL_GEO_CANDIDATE_MODEL_NAME } from '../../hotel-geo-candidates/const
 import { IHotelGeoCandidate } from '../../hotel-geo-candidates/types/hotel-geo-candidate.interface';
 import { GEO_MATCH_ACTION } from '../constants/geo-match-action.enum';
 import { IApplyGeoHotelMatchParams } from '../types/apply-geo-hotel-match-params.interface';
+import { IApplyManualGeoHotelMatchParams } from '../types/apply-manual-geo-hotel-match-params.interface';
 import { GeoHotelMatchingRepository } from './geo-hotel-matching.repository';
 
 @Injectable()
@@ -20,6 +21,39 @@ export class MongooseGeoHotelMatchingRepository extends GeoHotelMatchingReposito
     private readonly hotelGeoCandidateModel: Model<IHotelGeoCandidate>,
   ) {
     super();
+  }
+
+  async findCanonicalHotelForGeoMatchingById(
+    id: Types.ObjectId,
+  ): Promise<ICanonicalHotel | null> {
+    return this.canonicalHotelModel.findById(id).exec();
+  }
+
+  async findHotelGeoCandidateForGeoMatchingById(
+    id: Types.ObjectId,
+  ): Promise<IHotelGeoCandidate | null> {
+    return this.hotelGeoCandidateModel.findById(id).exec();
+  }
+
+  async listCanonicalHotelIdsWithMergedGeoCandidates(): Promise<string[]> {
+    const ids = await this.hotelGeoCandidateModel
+      .distinct('canonicalHotelId', {
+        'lifecycle.status': HOTEL_GEO_CANDIDATE_LIFECYCLE_STATUS.ACTIVE,
+        canonicalHotelId: {
+          $ne: null,
+        },
+        matchStatus: {
+          $in: [
+            HOTEL_GEO_CANDIDATE_MATCH_STATUS.AUTO_MATCHED,
+            HOTEL_GEO_CANDIDATE_MATCH_STATUS.CONFIRMED,
+          ],
+        },
+      })
+      .exec();
+
+    return ids
+      .filter((id): id is Types.ObjectId => id instanceof Types.ObjectId)
+      .map((id) => id.toString());
   }
 
   async listCanonicalHotelsForGeoMatching(): Promise<ICanonicalHotel[]> {
@@ -149,6 +183,102 @@ export class MongooseGeoHotelMatchingRepository extends GeoHotelMatchingReposito
       .exec();
 
     return GEO_MATCH_ACTION.AUTO_MATCHED;
+  }
+
+  async applyManualMatch(
+    params: IApplyManualGeoHotelMatchParams,
+  ): Promise<GEO_MATCH_ACTION> {
+    const source = this.buildCanonicalGeoSource(params.hotelGeoCandidateId);
+    const now = new Date();
+    const existingCandidate = await this.hotelGeoCandidateModel
+      .findById(params.hotelGeoCandidateId)
+      .exec();
+
+    if (existingCandidate === null) {
+      return GEO_MATCH_ACTION.CONFLICT;
+    }
+
+    const wasAlreadyMatched =
+      existingCandidate.matchStatus === HOTEL_GEO_CANDIDATE_MATCH_STATUS.CONFIRMED &&
+      existingCandidate.canonicalHotelId?.equals(params.canonicalHotelId) === true;
+
+    if (
+      existingCandidate.canonicalHotelId !== null &&
+      !existingCandidate.canonicalHotelId.equals(params.canonicalHotelId)
+    ) {
+      return GEO_MATCH_ACTION.CONFLICT;
+    }
+
+    const existingCanonicalConflict = await this.hotelGeoCandidateModel
+      .findOne({
+        _id: {
+          $ne: params.hotelGeoCandidateId,
+        },
+        canonicalHotelId: params.canonicalHotelId,
+        matchStatus: {
+          $in: [
+            HOTEL_GEO_CANDIDATE_MATCH_STATUS.AUTO_MATCHED,
+            HOTEL_GEO_CANDIDATE_MATCH_STATUS.CONFIRMED,
+          ],
+        },
+      })
+      .exec();
+
+    if (existingCanonicalConflict !== null) {
+      return GEO_MATCH_ACTION.CONFLICT;
+    }
+
+    const canonicalUpdate = await this.canonicalHotelModel
+      .updateOne(
+        {
+          _id: params.canonicalHotelId,
+          $or: [
+            {
+              'geo.source': null,
+            },
+            {
+              'geo.source': source,
+            },
+          ],
+        },
+        {
+          $set: {
+            geo: {
+              point: params.point,
+              source,
+            },
+            updatedAt: now,
+          },
+        },
+      )
+      .exec();
+
+    if (canonicalUpdate.matchedCount === 0) {
+      return GEO_MATCH_ACTION.CONFLICT;
+    }
+
+    if (wasAlreadyMatched) {
+      return GEO_MATCH_ACTION.ALREADY_MATCHED;
+    }
+
+    await this.hotelGeoCandidateModel
+      .updateOne(
+        {
+          _id: params.hotelGeoCandidateId,
+        },
+        {
+          $set: {
+            canonicalHotelId: params.canonicalHotelId,
+            componentId: null,
+            matchReasons: ['MANUAL_MATCH'],
+            matchStatus: HOTEL_GEO_CANDIDATE_MATCH_STATUS.CONFIRMED,
+            updatedAt: now,
+          },
+        },
+      )
+      .exec();
+
+    return GEO_MATCH_ACTION.MANUAL_MATCHED;
   }
 
   private buildCanonicalGeoSource(candidateId: Types.ObjectId): string {

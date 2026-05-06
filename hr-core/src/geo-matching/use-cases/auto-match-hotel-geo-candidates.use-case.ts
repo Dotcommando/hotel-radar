@@ -687,7 +687,10 @@ export class AutoMatchHotelGeoCandidatesUseCase {
     return {
       action,
       canonicalHotelId: proposal.hotel.document._id.toString(),
+      canonicalHotelName: proposal.hotel.document.canonicalName,
       hotelGeoCandidateId: proposal.candidate.document._id.toString(),
+      hotelGeoCandidateName: proposal.candidate.document.name,
+      hotelGeoCandidateSourceId: proposal.candidate.document.source.id,
       reasons: proposal.reasons,
       score: proposal.score,
     };

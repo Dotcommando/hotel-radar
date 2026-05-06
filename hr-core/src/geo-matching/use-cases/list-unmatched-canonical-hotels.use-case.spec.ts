@@ -9,15 +9,20 @@ import { HOTEL_GEO_CANDIDATE_LIFECYCLE_STATUS } from '../../hotel-geo-candidates
 import { HOTEL_GEO_CANDIDATE_MATCH_STATUS } from '../../hotel-geo-candidates/constants/hotel-geo-candidate-match-status.enum';
 import { IHotelGeoCandidate } from '../../hotel-geo-candidates/types/hotel-geo-candidate.interface';
 import { GEO_MATCH_ACTION } from '../constants/geo-match-action.enum';
-import { GEO_MATCH_REASON } from '../constants/geo-match-reason.enum';
 import { GeoHotelMatchingRepository } from '../repositories/geo-hotel-matching.repository';
 import { IApplyGeoHotelMatchParams } from '../types/apply-geo-hotel-match-params.interface';
 import { IApplyManualGeoHotelMatchParams } from '../types/apply-manual-geo-hotel-match-params.interface';
 import { AutoMatchHotelGeoCandidatesUseCase } from './auto-match-hotel-geo-candidates.use-case';
+import { ListUnmatchedCanonicalHotelsUseCase } from './list-unmatched-canonical-hotels.use-case';
 
-describe('AutoMatchHotelGeoCandidatesUseCase', () => {
-  it('matches by strong contact and fuzzy name', async () => {
-    const hotel = buildCanonicalHotelFixture({
+describe('ListUnmatchedCanonicalHotelsUseCase', () => {
+  it('returns canonical hotels without merged candidates and includes suggestions', async () => {
+    const matchedHotel = buildCanonicalHotelFixture({
+      _id: new Types.ObjectId('69f88430878f7fca1f7e0ac6'),
+      canonicalName: 'MATCHED HOTEL',
+    });
+    const unmatchedHotel = buildCanonicalHotelFixture({
+      _id: new Types.ObjectId('69f88430878f7fca1f7e0ac8'),
       canonicalName: 'NICOLAS COLOR',
       contacts: {
         domains: ['nicholas.com.cy'],
@@ -26,7 +31,13 @@ describe('AutoMatchHotelGeoCandidatesUseCase', () => {
         websites: ['https://nicholas.com.cy'],
       },
     });
-    const candidate = buildHotelGeoCandidateFixture({
+    const matchedCandidate = buildHotelGeoCandidateFixture({
+      canonicalHotelId: matchedHotel._id,
+      matchStatus: HOTEL_GEO_CANDIDATE_MATCH_STATUS.AUTO_MATCHED,
+      name: 'Matched Hotel',
+    });
+    const suggestedCandidate = buildHotelGeoCandidateFixture({
+      _id: new Types.ObjectId('69fae6928833ac8ce429d21d'),
       name: 'Nicholas Color Hotel',
       sourceProperties: {
         name: 'Nicholas Color Hotel',
@@ -35,125 +46,37 @@ describe('AutoMatchHotelGeoCandidatesUseCase', () => {
       },
     });
     const repository = new InMemoryGeoHotelMatchingRepository(
-      [hotel],
-      [candidate],
+      [matchedHotel, unmatchedHotel],
+      [matchedCandidate, suggestedCandidate],
     );
-    const useCase = new AutoMatchHotelGeoCandidatesUseCase(repository);
+    const useCase = new ListUnmatchedCanonicalHotelsUseCase(
+      repository,
+      new AutoMatchHotelGeoCandidatesUseCase(repository),
+    );
 
     const result = await useCase.execute({
-      dryRun: true,
+      includeSuggestions: true,
     });
 
-    expect(result.stats.autoMatched).toBe(1);
-    expect(result.matches[0]).toMatchObject({
+    expect(result.total).toBe(1);
+    expect(result.items[0].canonicalHotel._id).toBe(
+      unmatchedHotel._id.toString(),
+    );
+    expect(result.items[0].suggestions).toHaveLength(1);
+    expect(result.items[0].suggestions[0]).toMatchObject({
       action: GEO_MATCH_ACTION.AUTO_MATCHED,
-      canonicalHotelId: hotel._id.toString(),
-      hotelGeoCandidateId: candidate._id.toString(),
+      hotelGeoCandidateId: suggestedCandidate._id.toString(),
     });
-    expect(result.matches[0].reasons).toContain(
-      GEO_MATCH_REASON.CONTACT_AND_FUZZY_NAME,
-    );
-    expect(repository.appliedMatches).toHaveLength(0);
   });
 
-  it('chooses a stronger OSM duplicate when the weaker candidate has lower source evidence', async () => {
+  it('can skip suggestion calculation', async () => {
     const hotel = buildCanonicalHotelFixture({
-      canonicalName: 'GRECIAN PARK',
-      contacts: {
-        domains: ['grecianpark.com'],
-        emails: ['info@grecianpark.com'],
-        phones: ['+35723844000'],
-        websites: ['https://www.grecianpark.com/'],
-      },
-    });
-    const weakCandidate = buildHotelGeoCandidateFixture({
-      _id: new Types.ObjectId('69fae6928833ac8ce429d27f'),
-      name: 'Grecian Park',
-      source: buildSourceFixture('way/81179328'),
-      sourceProperties: {
-        name: 'Grecian Park',
-        tourism: 'hotel',
-        website: 'https://grecianpark.com/',
-      },
-    });
-    const strongCandidate = buildHotelGeoCandidateFixture({
-      _id: new Types.ObjectId('69fae6948833ac8ce429d31f'),
-      name: 'Grecian Park',
-      source: buildSourceFixture('way/199710188'),
-      sourceProperties: {
-        email: 'info@grecianpark.com',
-        name: 'Grecian Park',
-        phone: '+357 23 844000',
-        tourism: 'hotel',
-        website: 'https://www.grecianpark.com/',
-      },
-    });
-    const repository = new InMemoryGeoHotelMatchingRepository(
-      [hotel],
-      [weakCandidate, strongCandidate],
-    );
-    const useCase = new AutoMatchHotelGeoCandidatesUseCase(repository);
-
-    const result = await useCase.execute({
-      dryRun: true,
-    });
-
-    expect(result.stats.autoMatched).toBe(1);
-    expect(result.matches[0].hotelGeoCandidateId).toBe(
-      strongCandidate._id.toString(),
-    );
-  });
-
-  it('allows shared group contacts only with strong name evidence', async () => {
-    const hotel = buildCanonicalHotelFixture({
-      canonicalName: 'TSOKKOS PARADISE HOLIDAY VILLAG',
-      contacts: {
-        domains: ['tsokkos.com'],
-        emails: ['reservations@tsokkos.com'],
-        phones: [],
-        websites: ['https://www.tsokkos.com/'],
-      },
+      canonicalName: 'NICOLAS COLOR',
     });
     const candidate = buildHotelGeoCandidateFixture({
-      name: 'Tsokkos Paradise Village',
+      name: 'Nicolas Color',
       sourceProperties: {
-        name: 'Tsokkos Paradise Village',
-        tourism: 'hotel',
-        website: 'https://www.tsokkos.com/',
-      },
-    });
-    const repository = new InMemoryGeoHotelMatchingRepository(
-      [hotel],
-      [candidate],
-    );
-    const useCase = new AutoMatchHotelGeoCandidatesUseCase(repository);
-
-    const result = await useCase.execute({
-      dryRun: true,
-    });
-
-    expect(result.stats.autoMatched).toBe(1);
-    expect(result.matches[0].reasons).toContain(
-      GEO_MATCH_REASON.SHARED_GROUP_CONTACT_AND_STRONG_NAME,
-    );
-  });
-
-  it('matches by postcode and strong name evidence', async () => {
-    const hotel = buildCanonicalHotelFixture({
-      canonicalName: 'LA VERANDA DE LARNACA',
-      location: {
-        address: 'Michael Aggelou',
-        district: 'LARNACA',
-        locality: 'Larnaka',
-        postcode: '6028',
-      },
-    });
-    const candidate = buildHotelGeoCandidateFixture({
-      name: 'La Veranda Hotel',
-      sourceProperties: {
-        'addr:city': 'Larnaka',
-        'addr:postcode': '6028',
-        name: 'La Veranda Hotel',
+        name: 'Nicolas Color',
         tourism: 'hotel',
       },
     });
@@ -161,52 +84,17 @@ describe('AutoMatchHotelGeoCandidatesUseCase', () => {
       [hotel],
       [candidate],
     );
-    const useCase = new AutoMatchHotelGeoCandidatesUseCase(repository);
+    const useCase = new ListUnmatchedCanonicalHotelsUseCase(
+      repository,
+      new AutoMatchHotelGeoCandidatesUseCase(repository),
+    );
 
     const result = await useCase.execute({
-      dryRun: true,
+      includeSuggestions: false,
     });
 
-    expect(result.stats.autoMatched).toBe(1);
-    expect(result.matches[0].reasons).toContain(
-      GEO_MATCH_REASON.ADDRESS_AND_STRONG_NAME,
-    );
-  });
-
-  it('does not auto-match tied reduced-name duplicates', async () => {
-    const hotel = buildCanonicalHotelFixture({
-      canonicalName: 'AVANTI',
-    });
-    const hotelCandidate = buildHotelGeoCandidateFixture({
-      name: 'Avanti Hotel',
-      source: buildSourceFixture('node/1'),
-      sourceProperties: {
-        name: 'Avanti Hotel',
-        tourism: 'hotel',
-      },
-    });
-    const villageCandidate = buildHotelGeoCandidateFixture({
-      _id: new Types.ObjectId('69fae6968833ac8ce429d6ab'),
-      name: 'Avanti Village',
-      source: buildSourceFixture('node/2'),
-      sourceProperties: {
-        name: 'Avanti Village',
-        tourism: 'hotel',
-      },
-    });
-    const repository = new InMemoryGeoHotelMatchingRepository(
-      [hotel],
-      [hotelCandidate, villageCandidate],
-    );
-    const useCase = new AutoMatchHotelGeoCandidatesUseCase(repository);
-
-    const result = await useCase.execute({
-      dryRun: true,
-    });
-
-    expect(result.stats.autoMatched).toBe(0);
-    expect(result.stats.needsReview).toBe(2);
-    expect(result.reviewSuggestions).toHaveLength(2);
+    expect(result.total).toBe(1);
+    expect(result.items[0].suggestions).toEqual([]);
   });
 });
 
@@ -248,18 +136,14 @@ class InMemoryGeoHotelMatchingRepository extends GeoHotelMatchingRepository {
     return this.hotels;
   }
 
-  async listHotelGeoCandidatesForAutoMatching(
-    limit: number,
-  ): Promise<IHotelGeoCandidate[]> {
-    const rows = this.candidates.filter(
+  async listHotelGeoCandidatesForAutoMatching(): Promise<IHotelGeoCandidate[]> {
+    return this.candidates.filter(
       (candidate) =>
         candidate.lifecycle.status ===
           HOTEL_GEO_CANDIDATE_LIFECYCLE_STATUS.ACTIVE &&
         (candidate.matchStatus === HOTEL_GEO_CANDIDATE_MATCH_STATUS.UNMATCHED ||
           candidate.matchStatus === HOTEL_GEO_CANDIDATE_MATCH_STATUS.AUTO_MATCHED),
     );
-
-    return limit > 0 ? rows.slice(0, limit) : rows;
   }
 
   async applyAutoMatch(
@@ -307,7 +191,12 @@ function buildHotelGeoCandidateFixture(
       coordinates: [34.0116723, 35.0542236],
       type: 'Point',
     },
-    source: buildSourceFixture('relation/1'),
+    source: {
+      dataset: GEO_SOURCE_DATASET.OVERPASS_TURBO,
+      id: 'relation/1',
+      importRunId: new Types.ObjectId(),
+      type: GEO_SOURCE_TYPE.OSM,
+    },
     sourceHashes: {
       geometryHash: 'geometry-hash',
       propertiesHash: 'properties-hash',
@@ -396,14 +285,5 @@ function buildCanonicalHotelFixture(
       websites: contacts.websites,
     },
     ...overrides,
-  };
-}
-
-function buildSourceFixture(id: string): IHotelGeoCandidate['source'] {
-  return {
-    dataset: GEO_SOURCE_DATASET.OVERPASS_TURBO,
-    id,
-    importRunId: new Types.ObjectId(),
-    type: GEO_SOURCE_TYPE.OSM,
   };
 }

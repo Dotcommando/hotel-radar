@@ -1,15 +1,21 @@
-import { NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  NotFoundException,
+} from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { Types } from 'mongoose';
 import { BEACH_GEOMETRY_KIND } from '../beach-profiles/constants/beach-geometry-kind.enum';
 import { BEACH_PROFILE_LIFECYCLE_STATUS } from '../beach-profiles/constants/beach-profile-lifecycle-status.enum';
 import { BEACH_QUALITY_STATUS } from '../beach-profiles/constants/beach-quality-status.enum';
 import { BEACH_TYPE } from '../beach-profiles/constants/beach-type.enum';
+import { CANONICAL_HOTEL_STATUS } from '../canonical-hotels/constants/canonical-hotel-status.enum';
 import { GEO_SOURCE_DATASET } from '../geo-import-runs/constants/geo-source-dataset.enum';
 import { GEO_SOURCE_TYPE } from '../geo-import-runs/constants/geo-source-type.enum';
 import { GEO_MATCH_ACTION } from '../geo-matching/constants/geo-match-action.enum';
 import { AutoMatchHotelGeoCandidatesUseCase } from '../geo-matching/use-cases/auto-match-hotel-geo-candidates.use-case';
+import { ListUnmatchedCanonicalHotelsUseCase } from '../geo-matching/use-cases/list-unmatched-canonical-hotels.use-case';
 import { IAutoMatchHotelGeoCandidatesResult } from '../geo-matching/types/auto-match-hotel-geo-candidates-result.interface';
+import { IListUnmatchedCanonicalHotelsResult } from '../geo-matching/types/list-unmatched-canonical-hotels-result.interface';
 import { HOTEL_GEO_CANDIDATE_LIFECYCLE_STATUS } from '../hotel-geo-candidates/constants/hotel-geo-candidate-lifecycle-status.enum';
 import { HOTEL_GEO_CANDIDATE_MATCH_STATUS } from '../hotel-geo-candidates/constants/hotel-geo-candidate-match-status.enum';
 import { GeoDataController } from './geo-data.controller';
@@ -48,6 +54,9 @@ describe('GeoDataController', () => {
   let listHotelGeoCandidatesUseCase: {
     execute: jest.Mock<Promise<IListHotelGeoCandidatesResult>, [unknown]>;
   };
+  let listUnmatchedCanonicalHotelsUseCase: {
+    execute: jest.Mock<Promise<IListUnmatchedCanonicalHotelsResult>, [unknown]>;
+  };
   let listBeachProfilesUseCase: {
     execute: jest.Mock<Promise<IListBeachProfilesResult>, [unknown]>;
   };
@@ -69,6 +78,9 @@ describe('GeoDataController', () => {
       execute: jest.fn(),
     };
     listHotelGeoCandidatesUseCase = {
+      execute: jest.fn(),
+    };
+    listUnmatchedCanonicalHotelsUseCase = {
       execute: jest.fn(),
     };
     listBeachProfilesUseCase = {
@@ -101,6 +113,10 @@ describe('GeoDataController', () => {
         {
           provide: ListHotelGeoCandidatesUseCase,
           useValue: listHotelGeoCandidatesUseCase,
+        },
+        {
+          provide: ListUnmatchedCanonicalHotelsUseCase,
+          useValue: listUnmatchedCanonicalHotelsUseCase,
         },
         {
           provide: ListBeachProfilesUseCase,
@@ -151,6 +167,54 @@ describe('GeoDataController', () => {
     ).resolves.toEqual(resultFixture);
     expect(autoMatchHotelGeoCandidatesUseCase.execute).toHaveBeenCalledWith({
       dryRun: 'true',
+    });
+  });
+
+  it('lists canonical hotels without merged geo candidates', async () => {
+    const resultFixture: IListUnmatchedCanonicalHotelsResult = {
+      items: [
+        {
+          canonicalHotel: {
+            _id: new Types.ObjectId().toString(),
+            canonicalName: 'NICOLAS COLOR',
+            geo: {
+              point: null,
+              source: null,
+            },
+            location: {
+              address: 'Main Street',
+              district: 'AGIA NAPA',
+              locality: 'Ayia Napa',
+              postcode: '5330',
+            },
+            status: CANONICAL_HOTEL_STATUS.ACTIVE,
+          },
+          suggestions: [],
+        },
+      ],
+      limit: 25,
+      offset: 0,
+      ok: true,
+      total: 1,
+    };
+
+    listUnmatchedCanonicalHotelsUseCase.execute.mockResolvedValue(
+      resultFixture,
+    );
+
+    await expect(
+      controller.listCanonicalHotelsWithoutGeoCandidates({
+        includeSuggestions: 'true',
+        limit: '25',
+        offset: '0',
+        suggestionLimit: '3',
+      }),
+    ).resolves.toEqual(resultFixture);
+    expect(listUnmatchedCanonicalHotelsUseCase.execute).toHaveBeenCalledWith({
+      includeSuggestions: 'true',
+      limit: '25',
+      offset: '0',
+      suggestionLimit: '3',
     });
   });
 
@@ -334,6 +398,28 @@ describe('GeoDataController', () => {
     expect(getHotelGeoCandidateUseCase.execute).toHaveBeenCalledWith(
       candidate._id.toString(),
     );
+  });
+
+  it('returns hotel geo candidate by query id', async () => {
+    const candidate = buildHotelGeoCandidateFixture();
+    const resultFixture: IGetHotelGeoCandidateResult = {
+      item: candidate,
+      ok: true,
+    };
+
+    getHotelGeoCandidateUseCase.execute.mockResolvedValue(resultFixture);
+
+    await expect(
+      controller.getHotelCandidateByQuery(candidate._id.toString()),
+    ).resolves.toEqual(resultFixture);
+    expect(getHotelGeoCandidateUseCase.execute).toHaveBeenCalledWith(
+      candidate._id.toString(),
+    );
+  });
+
+  it('rejects missing hotel geo candidate query id', async () => {
+    await expect(controller.getHotelCandidateByQuery(''))
+      .rejects.toBeInstanceOf(BadRequestException);
   });
 
   it('maps missing hotel geo candidate to not found response', async () => {

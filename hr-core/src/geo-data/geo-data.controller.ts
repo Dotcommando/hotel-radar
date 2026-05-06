@@ -1,5 +1,6 @@
 import {
   Controller,
+  BadRequestException,
   Body,
   Get,
   NotFoundException,
@@ -8,8 +9,11 @@ import {
   Query,
 } from '@nestjs/common';
 import { AutoMatchHotelGeoCandidatesUseCase } from '../geo-matching/use-cases/auto-match-hotel-geo-candidates.use-case';
+import { ListUnmatchedCanonicalHotelsUseCase } from '../geo-matching/use-cases/list-unmatched-canonical-hotels.use-case';
 import type { IAutoMatchHotelGeoCandidatesRequest } from '../geo-matching/types/auto-match-hotel-geo-candidates-request.interface';
 import type { IAutoMatchHotelGeoCandidatesResult } from '../geo-matching/types/auto-match-hotel-geo-candidates-result.interface';
+import type { IListUnmatchedCanonicalHotelsQuery } from '../geo-matching/types/list-unmatched-canonical-hotels-query.interface';
+import type { IListUnmatchedCanonicalHotelsResult } from '../geo-matching/types/list-unmatched-canonical-hotels-result.interface';
 import { BeachProfileNotFoundError } from './errors/beach-profile-not-found.error';
 import { HotelGeoCandidateNotFoundError } from './errors/hotel-geo-candidate-not-found.error';
 import { IGetBeachProfileResult } from './types/get-beach-profile-result.interface';
@@ -35,6 +39,7 @@ export class GeoDataController {
     private readonly getBeachProfilesStatsUseCase: GetBeachProfilesStatsUseCase,
     private readonly getHotelGeoCandidateUseCase: GetHotelGeoCandidateUseCase,
     private readonly getHotelGeoCandidatesStatsUseCase: GetHotelGeoCandidatesStatsUseCase,
+    private readonly listUnmatchedCanonicalHotelsUseCase: ListUnmatchedCanonicalHotelsUseCase,
     private readonly listBeachProfilesUseCase: ListBeachProfilesUseCase,
     private readonly listHotelGeoCandidatesUseCase: ListHotelGeoCandidatesUseCase,
   ) {}
@@ -44,6 +49,13 @@ export class GeoDataController {
     @Body() body: IAutoMatchHotelGeoCandidatesRequest = {},
   ): Promise<IAutoMatchHotelGeoCandidatesResult> {
     return this.autoMatchHotelGeoCandidatesUseCase.execute(body);
+  }
+
+  @Get('canonical-hotels/without-geo-candidates')
+  async listCanonicalHotelsWithoutGeoCandidates(
+    @Query() query: IListUnmatchedCanonicalHotelsQuery,
+  ): Promise<IListUnmatchedCanonicalHotelsResult> {
+    return this.listUnmatchedCanonicalHotelsUseCase.execute(query);
   }
 
   @Get('beaches')
@@ -87,9 +99,30 @@ export class GeoDataController {
     return this.getHotelGeoCandidatesStatsUseCase.execute();
   }
 
+  @Get('hotel-candidates/by-id')
+  async getHotelCandidateByQuery(
+    @Query('id') id: string | undefined,
+  ): Promise<IGetHotelGeoCandidateResult> {
+    if (id === undefined || id.trim().length === 0) {
+      throw new BadRequestException({
+        code: 'HOTEL_GEO_CANDIDATE_ID_REQUIRED',
+        message: 'Hotel geo candidate id is required.',
+        ok: false,
+      });
+    }
+
+    return this.getHotelCandidateById(id);
+  }
+
   @Get('hotel-candidates/:id')
   async getHotelCandidate(
     @Param('id') id: string,
+  ): Promise<IGetHotelGeoCandidateResult> {
+    return this.getHotelCandidateById(id);
+  }
+
+  private async getHotelCandidateById(
+    id: string,
   ): Promise<IGetHotelGeoCandidateResult> {
     try {
       return await this.getHotelGeoCandidateUseCase.execute(id);

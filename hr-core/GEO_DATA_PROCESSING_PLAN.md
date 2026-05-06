@@ -659,6 +659,7 @@ Update `hr-core/postman-api/Hotel Radar.postman_collection.json` with:
 
 ```txt
 POST {{baseUrl}}/geo-data/hotel-candidates/match/auto
+GET  {{baseUrl}}/geo-data/canonical-hotels/without-geo-candidates
 POST {{baseUrl}}/geo-data/hotel-candidates/match/manual
 ```
 
@@ -666,6 +667,7 @@ Include example bodies for:
 
 - automatic match with `{ "dryRun": true }`;
 - automatic match with `{ "dryRun": false }`;
+- canonical hotels without merged geo candidates with `includeSuggestions=true`;
 - manual match with `hotelGeoCandidateId`, `canonicalHotelId`, and `componentId: null`.
 
 ## Implementation Progress
@@ -678,13 +680,17 @@ Include example bodies for:
 6. DONE Add automatic matching Postman requests.
 7. DONE Run targeted tests for the automatic matching endpoint.
 8. DONE Verify `POST /geo-data/hotel-candidates/match/auto` via Docker dry-run.
-9. NEXT Stop for manual testing.
-10. TODO Add failing tests for manual matching.
-11. TODO Implement manual matching use case and conflict errors.
-12. TODO Add manual matching endpoint.
-13. TODO Add manual matching Postman request.
-14. TODO Run the targeted test suite.
-15. TODO Run the full `hr-core` test suite after the existing missing-script test fixture is restored.
+9. DONE Add `GET /geo-data/canonical-hotels/without-geo-candidates`.
+10. DONE Include potential `hotel_geo_candidates` suggestions in the unmatched canonical hotels response.
+11. DONE Add Postman request for unmatched canonical hotels.
+12. DONE Verify unmatched canonical hotels endpoint via Docker.
+13. NEXT Stop for manual testing.
+14. TODO Add failing tests for manual matching.
+15. TODO Implement manual matching use case and conflict errors.
+16. TODO Add manual matching endpoint.
+17. TODO Add manual matching Postman request.
+18. TODO Run the targeted test suite.
+19. TODO Run the full `hr-core` test suite after the existing missing-script test fixture is restored.
 
 ## Open Policy Decision
 

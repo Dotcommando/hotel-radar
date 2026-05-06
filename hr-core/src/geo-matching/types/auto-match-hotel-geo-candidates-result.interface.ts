@@ -4,7 +4,10 @@ import { GEO_MATCH_REASON } from '../constants/geo-match-reason.enum';
 export interface IAutoMatchHotelGeoCandidateResultItem {
   action: GEO_MATCH_ACTION;
   canonicalHotelId: string;
+  canonicalHotelName: string;
   hotelGeoCandidateId: string;
+  hotelGeoCandidateName: string | null;
+  hotelGeoCandidateSourceId: string;
   reasons: GEO_MATCH_REASON[];
   score: number;
 }
