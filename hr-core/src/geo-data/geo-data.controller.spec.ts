@@ -7,6 +7,9 @@ import { BEACH_QUALITY_STATUS } from '../beach-profiles/constants/beach-quality-
 import { BEACH_TYPE } from '../beach-profiles/constants/beach-type.enum';
 import { GEO_SOURCE_DATASET } from '../geo-import-runs/constants/geo-source-dataset.enum';
 import { GEO_SOURCE_TYPE } from '../geo-import-runs/constants/geo-source-type.enum';
+import { GEO_MATCH_ACTION } from '../geo-matching/constants/geo-match-action.enum';
+import { AutoMatchHotelGeoCandidatesUseCase } from '../geo-matching/use-cases/auto-match-hotel-geo-candidates.use-case';
+import { IAutoMatchHotelGeoCandidatesResult } from '../geo-matching/types/auto-match-hotel-geo-candidates-result.interface';
 import { HOTEL_GEO_CANDIDATE_LIFECYCLE_STATUS } from '../hotel-geo-candidates/constants/hotel-geo-candidate-lifecycle-status.enum';
 import { HOTEL_GEO_CANDIDATE_MATCH_STATUS } from '../hotel-geo-candidates/constants/hotel-geo-candidate-match-status.enum';
 import { GeoDataController } from './geo-data.controller';
@@ -27,6 +30,9 @@ import { ListHotelGeoCandidatesUseCase } from './use-cases/list-hotel-geo-candid
 
 describe('GeoDataController', () => {
   let controller: GeoDataController;
+  let autoMatchHotelGeoCandidatesUseCase: {
+    execute: jest.Mock<Promise<IAutoMatchHotelGeoCandidatesResult>, [unknown]>;
+  };
   let getBeachProfileUseCase: {
     execute: jest.Mock<Promise<IGetBeachProfileResult>, [string]>;
   };
@@ -47,6 +53,9 @@ describe('GeoDataController', () => {
   };
 
   beforeEach(async () => {
+    autoMatchHotelGeoCandidatesUseCase = {
+      execute: jest.fn(),
+    };
     getBeachProfileUseCase = {
       execute: jest.fn(),
     };
@@ -69,6 +78,10 @@ describe('GeoDataController', () => {
     const module: TestingModule = await Test.createTestingModule({
       controllers: [GeoDataController],
       providers: [
+        {
+          provide: AutoMatchHotelGeoCandidatesUseCase,
+          useValue: autoMatchHotelGeoCandidatesUseCase,
+        },
         {
           provide: GetBeachProfileUseCase,
           useValue: getBeachProfileUseCase,
@@ -97,6 +110,48 @@ describe('GeoDataController', () => {
     }).compile();
 
     controller = module.get<GeoDataController>(GeoDataController);
+  });
+
+  it('starts automatic hotel geo candidate matching', async () => {
+    const resultFixture: IAutoMatchHotelGeoCandidatesResult = {
+      conflicts: [],
+      dryRun: true,
+      matches: [
+        {
+          action: GEO_MATCH_ACTION.AUTO_MATCHED,
+          canonicalHotelId: new Types.ObjectId().toString(),
+          hotelGeoCandidateId: new Types.ObjectId().toString(),
+          reasons: [],
+          score: 100,
+        },
+      ],
+      ok: true,
+      reviewSuggestions: [],
+      stats: {
+        alreadyMatched: 0,
+        autoMatched: 1,
+        conflicts: 0,
+        eligibleCandidates: 1,
+        needsReview: 0,
+        noDeterministicMatch: 0,
+        skippedConfirmed: 0,
+        skippedRejected: 0,
+        skippedStale: 0,
+      },
+    };
+
+    autoMatchHotelGeoCandidatesUseCase.execute.mockResolvedValue(
+      resultFixture,
+    );
+
+    await expect(
+      controller.autoMatchHotelCandidates({
+        dryRun: 'true',
+      }),
+    ).resolves.toEqual(resultFixture);
+    expect(autoMatchHotelGeoCandidatesUseCase.execute).toHaveBeenCalledWith({
+      dryRun: 'true',
+    });
   });
 
   it('returns hotel geo candidate stats', async () => {

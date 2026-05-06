@@ -518,6 +518,80 @@
       "response": []
     },
     {
+      "name": "Geo Data. Auto-match hotel candidates dry run",
+      "request": {
+        "auth": {
+          "type": "noauth"
+        },
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"dryRun\": true,\n  \"limit\": 0\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "{{hrCoreBaseUrl}}/geo-data/hotel-candidates/match/auto",
+          "host": [
+            "{{hrCoreBaseUrl}}"
+          ],
+          "path": [
+            "geo-data",
+            "hotel-candidates",
+            "match",
+            "auto"
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Geo Data. Auto-match hotel candidates",
+      "request": {
+        "auth": {
+          "type": "noauth"
+        },
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"dryRun\": false,\n  \"limit\": 0\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "{{hrCoreBaseUrl}}/geo-data/hotel-candidates/match/auto",
+          "host": [
+            "{{hrCoreBaseUrl}}"
+          ],
+          "path": [
+            "geo-data",
+            "hotel-candidates",
+            "match",
+            "auto"
+          ]
+        }
+      },
+      "response": []
+    },
+    {
       "name": "Geo Data. Hotel candidate by Id",
       "request": {
         "auth": {

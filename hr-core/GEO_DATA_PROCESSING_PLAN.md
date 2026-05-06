@@ -58,6 +58,56 @@ strong contact + compatible name: 117
 strict one-to-one proposals after resolving duplicate targets: about 303
 ```
 
+Extended deterministic analysis:
+
+```txt
+safe extension over strict rules: about +30 matches
+expected confident automatic matches: about 330-350
+expected remaining manual/review workload: not all 350-370 remaining hotels are equally searchable
+current first endpoint dry-run result: 313 automatic matches, 68 review suggestions, 977 no signal
+```
+
+The current data does not support a reliable target of 500 automatic matches from `canonical_hotels` and `hotel_geo_candidates` alone. Pure fuzzy-name matching adds noise quickly and does not reveal another 150-200 safe matches. The implementation should therefore split outcomes into:
+
+```txt
+AUTO_MATCHED_CONFIDENT
+  high-confidence one-to-one matches that can write to canonical_hotels.geo automatically.
+
+NEEDS_REVIEW_WITH_SUGGESTION
+  plausible matches with candidate/canonical ids, reasons, score, and conflict notes.
+  These should reduce manual work by turning raw search into confirmation/rejection.
+
+NO_SIGNAL
+  candidates or canonical hotels without enough evidence for a useful suggestion.
+```
+
+Additional rules allowed for `AUTO_MATCHED_CONFIDENT`:
+
+```txt
+CONTACT_AND_FUZZY_NAME
+  phone, non-shared email, or non-shared domain plus a high fuzzy name score.
+
+SHARED_GROUP_CONTACT_AND_STRONG_NAME
+  shared group website/email only when the name evidence is strong.
+
+ADDRESS_AND_STRONG_NAME
+  postcode, city, or street evidence only as a secondary signal with a strong name.
+
+OSM_DUPLICATE_BEST_CANDIDATE
+  choose the best OSM duplicate only when one candidate is strictly stronger by source richness:
+  contact fields > website/email > phone > stars > relation/way > node > name-only.
+```
+
+Rules that should not be automatic:
+
+```txt
+FUZZY_NAME_ONLY below a high threshold
+single shared token matches such as GRAND, BEACH, NAPA, PALM, SUN, ROYAL
+postcode/city matches where the hotel name signal is weak
+ties between OSM duplicates with equal score
+matches between different branded properties in the same hotel group
+```
+
 Important data quality observations:
 
 - Some OSM objects duplicate the same physical hotel as a relation, way, and node.
@@ -147,13 +197,13 @@ Recommended response shape:
   "dryRun": false,
   "stats": {
     "eligibleCandidates": 1358,
-    "autoMatched": 303,
+    "autoMatched": 313,
     "alreadyMatched": 0,
-    "needsReview": 0,
+    "needsReview": 68,
     "skippedConfirmed": 0,
     "skippedRejected": 0,
     "skippedStale": 0,
-    "noDeterministicMatch": 1055,
+    "noDeterministicMatch": 977,
     "conflicts": 0
   },
   "matches": [
@@ -165,11 +215,20 @@ Recommended response shape:
       "score": 100
     }
   ],
-  "conflicts": []
+  "conflicts": [],
+  "reviewSuggestions": [
+    {
+      "hotelGeoCandidateId": "string",
+      "canonicalHotelId": "string",
+      "action": "NEEDS_REVIEW",
+      "reasons": ["REDUCED_EXACT_NAME"],
+      "score": 60
+    }
+  ]
 }
 ```
 
-The response should include enough per-match detail for manual spot checks. If the response gets too large, return all conflicts and only the first N matches, with a `returnedMatches` counter.
+The response should include enough per-match detail for manual spot checks. `reviewSuggestions` is intentionally separate from `matches`: those candidates have a plausible proposal but are not safe enough to write automatically.
 
 ### Eligibility
 
@@ -609,21 +668,23 @@ Include example bodies for:
 - automatic match with `{ "dryRun": false }`;
 - manual match with `hotelGeoCandidateId`, `canonicalHotelId`, and `componentId: null`.
 
-## Implementation Order
+## Implementation Progress
 
-1. Add failing unit tests for normalization and matching decision rules.
-2. Implement `geo-matching` normalization utilities and shared-domain filtering.
-3. Add service read methods needed to build a canonical hotel match index and candidate list.
-4. Add automatic matching use case with dry-run-capable decision reporting.
-5. Add automatic matching endpoint.
-6. Add automatic matching Postman request.
-7. Stop for manual testing.
-8. Add failing tests for manual matching.
-9. Implement manual matching use case and conflict errors.
-10. Add manual matching endpoint.
-11. Add manual matching Postman request.
-12. Run the targeted test suite.
-13. Run the full `hr-core` test suite if time and environment allow.
+1. DONE Add failing unit tests for normalization and matching decision rules.
+2. DONE Implement `geo-matching` normalization utilities and shared-domain filtering.
+3. DONE Add repository methods needed to build a canonical hotel match index and candidate list.
+4. DONE Add automatic matching use case with dry-run-capable decision reporting.
+5. DONE Add automatic matching endpoint.
+6. DONE Add automatic matching Postman requests.
+7. DONE Run targeted tests for the automatic matching endpoint.
+8. DONE Verify `POST /geo-data/hotel-candidates/match/auto` via Docker dry-run.
+9. NEXT Stop for manual testing.
+10. TODO Add failing tests for manual matching.
+11. TODO Implement manual matching use case and conflict errors.
+12. TODO Add manual matching endpoint.
+13. TODO Add manual matching Postman request.
+14. TODO Run the targeted test suite.
+15. TODO Run the full `hr-core` test suite after the existing missing-script test fixture is restored.
 
 ## Open Policy Decision
 

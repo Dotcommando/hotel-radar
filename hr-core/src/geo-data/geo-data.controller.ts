@@ -1,10 +1,15 @@
 import {
   Controller,
+  Body,
   Get,
   NotFoundException,
   Param,
+  Post,
   Query,
 } from '@nestjs/common';
+import { AutoMatchHotelGeoCandidatesUseCase } from '../geo-matching/use-cases/auto-match-hotel-geo-candidates.use-case';
+import type { IAutoMatchHotelGeoCandidatesRequest } from '../geo-matching/types/auto-match-hotel-geo-candidates-request.interface';
+import type { IAutoMatchHotelGeoCandidatesResult } from '../geo-matching/types/auto-match-hotel-geo-candidates-result.interface';
 import { BeachProfileNotFoundError } from './errors/beach-profile-not-found.error';
 import { HotelGeoCandidateNotFoundError } from './errors/hotel-geo-candidate-not-found.error';
 import { IGetBeachProfileResult } from './types/get-beach-profile-result.interface';
@@ -25,6 +30,7 @@ import type { IListHotelGeoCandidatesQuery } from './types/list-hotel-geo-candid
 @Controller('geo-data')
 export class GeoDataController {
   constructor(
+    private readonly autoMatchHotelGeoCandidatesUseCase: AutoMatchHotelGeoCandidatesUseCase,
     private readonly getBeachProfileUseCase: GetBeachProfileUseCase,
     private readonly getBeachProfilesStatsUseCase: GetBeachProfilesStatsUseCase,
     private readonly getHotelGeoCandidateUseCase: GetHotelGeoCandidateUseCase,
@@ -32,6 +38,13 @@ export class GeoDataController {
     private readonly listBeachProfilesUseCase: ListBeachProfilesUseCase,
     private readonly listHotelGeoCandidatesUseCase: ListHotelGeoCandidatesUseCase,
   ) {}
+
+  @Post('hotel-candidates/match/auto')
+  async autoMatchHotelCandidates(
+    @Body() body: IAutoMatchHotelGeoCandidatesRequest = {},
+  ): Promise<IAutoMatchHotelGeoCandidatesResult> {
+    return this.autoMatchHotelGeoCandidatesUseCase.execute(body);
+  }
 
   @Get('beaches')
   async listBeaches(
