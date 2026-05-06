@@ -19,6 +19,8 @@ raw_hotels
 
 Future product-facing services should read `canonical_hotels` and should not depend on how hotel data was parsed, deduplicated, grouped, reviewed, or merged.
 
+`hr-core` also owns the first version of the geo data import and inspection pipeline for OSM-derived Cyprus data.
+
 ## Pipeline Ownership
 
 - `raw-hotels` owns parsed PDF hotel records and technical raw deduplication.
@@ -26,6 +28,11 @@ Future product-facing services should read `canonical_hotels` and should not dep
 - `canonical-hotel-candidates` owns deterministic candidate documents built from registry entries.
 - `canonical-hotels` owns final product-facing canonical hotels and candidate apply logic.
 - `hotel-processing` owns BullMQ orchestration, run records, processing state transitions, and rollback between early stages.
+- `geo-imports` owns admin endpoints and use cases for importing local geo source files.
+- `geo-import-runs` owns the `geo_import_runs` import run ledger.
+- `hotel-geo-candidates` owns external hotel-like geo source objects in `hotel_geo_candidates`.
+- `beach-profiles` owns first-class beach entities in `beach_profiles`.
+- `geo-data` owns read-only inspection endpoints for imported geo data.
 
 ## Processing Direction
 
@@ -88,6 +95,54 @@ Rollback does not currently undo writes to `canonical_hotels`.
 Stage 4 writes `canonical_hotels` and `canonical_hotel_candidates.processing`. It does not create `hotel_web_sources`.
 
 Official gov registry websites are stored in canonical hotel contacts and `webPresence`. Discovered SERP, crawl, Google Business, social, OTA, or manually reviewed web resources belong in a separate enrichment feature when that feature exists.
+
+## Geo Data Pipeline
+
+The implemented first-version geo data pipeline is separate from hotel ingestion:
+
+```text
+local OSM Overpass GeoJSON files
+  -> geo_import_runs
+  -> hotel_geo_candidates
+  -> beach_profiles
+```
+
+Current source files:
+
+```text
+data/raw/osm/overpass/hotels.geojson
+data/raw/osm/overpass/beaches.geojson
+```
+
+Current geo import endpoints:
+
+```text
+POST /geo-imports/runs/osm-overpass/hotels
+POST /geo-imports/runs/osm-overpass/beaches
+GET  /geo-imports/runs
+GET  /geo-imports/runs/:runId
+```
+
+Current geo inspection endpoints:
+
+```text
+GET /geo-data/hotel-candidates
+GET /geo-data/hotel-candidates/:id
+GET /geo-data/hotel-candidates/stats
+GET /geo-data/beaches
+GET /geo-data/beaches/:id
+GET /geo-data/beaches/stats
+```
+
+Geo imports are synchronous in the current implementation and import local GeoJSON files directly during the request. They are not BullMQ jobs yet.
+
+Geo imports create `geo_import_runs`, upsert source documents by source identity, compare geometry/properties hashes, and mark missing records as `STALE`. They do not delete records that disappear from a later import.
+
+`hotel_geo_candidates` are external hotel-like geo objects and must not be treated as confirmed canonical hotel locations. `beach_profiles` are first-class beach entities and should not be collapsed into generic POI.
+
+Geo read endpoints are intentionally read-only.
+
+Do not write to `canonical_hotels.geo` from imports or `geo-data`. Future matching/confirmation should be implemented as a separate conservative geo matching feature.
 
 ## Merge Policy
 
