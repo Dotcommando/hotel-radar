@@ -352,6 +352,54 @@
       "response": []
     },
     {
+      "name": "Geo Import. OSM Overpass beaches",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "const response = pm.response.json();",
+              "",
+              "if (response.runId) {",
+              "  pm.environment.set('geoImportRunId', response.runId);",
+              "  pm.collectionVariables.set('geoImportRunId', response.runId);",
+              "}"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "auth": {
+          "type": "noauth"
+        },
+        "method": "POST",
+        "header": [],
+        "body": {
+          "mode": "raw",
+          "raw": "",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "{{hrCoreBaseUrl}}/geo-imports/runs/osm-overpass/beaches",
+          "host": [
+            "{{hrCoreBaseUrl}}"
+          ],
+          "path": [
+            "geo-imports",
+            "runs",
+            "osm-overpass",
+            "beaches"
+          ]
+        }
+      },
+      "response": []
+    },
+    {
       "name": "Geo Import. Check Run by Id",
       "request": {
         "auth": {

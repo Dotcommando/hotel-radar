@@ -1,0 +1,5 @@
+export enum BEACH_QUALITY_CONFIDENCE {
+  LOW = 'LOW',
+  MEDIUM = 'MEDIUM',
+  HIGH = 'HIGH',
+}

@@ -11,12 +11,14 @@ import { GeoImportRunNotFoundError } from './errors/geo-import-run-not-found.err
 import { IGetGeoImportRunResult } from './types/get-geo-import-run-result.interface';
 import { IGeoImportRunResult } from './types/geo-import-run-result.interface';
 import { GetGeoImportRunUseCase } from './use-cases/get-geo-import-run.use-case';
+import { StartOsmOverpassBeachesImportUseCase } from './use-cases/start-osm-overpass-beaches-import.use-case';
 import { StartOsmOverpassHotelsImportUseCase } from './use-cases/start-osm-overpass-hotels-import.use-case';
 
 @Controller('geo-imports')
 export class GeoImportsController {
   constructor(
     private readonly getGeoImportRunUseCase: GetGeoImportRunUseCase,
+    private readonly startOsmOverpassBeachesImportUseCase: StartOsmOverpassBeachesImportUseCase,
     private readonly startOsmOverpassHotelsImportUseCase: StartOsmOverpassHotelsImportUseCase,
   ) {}
 
@@ -24,6 +26,12 @@ export class GeoImportsController {
   @HttpCode(HttpStatus.ACCEPTED)
   async importOsmOverpassHotels(): Promise<IGeoImportRunResult> {
     return this.startOsmOverpassHotelsImportUseCase.execute();
+  }
+
+  @Post('runs/osm-overpass/beaches')
+  @HttpCode(HttpStatus.ACCEPTED)
+  async importOsmOverpassBeaches(): Promise<IGeoImportRunResult> {
+    return this.startOsmOverpassBeachesImportUseCase.execute();
   }
 
   @Get('runs/:runId')

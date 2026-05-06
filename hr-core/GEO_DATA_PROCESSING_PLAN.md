@@ -883,10 +883,10 @@ not merge or confirm hotel geo points from weak signals.
 Recommended first version:
 
 ```txt
-POST /geo-imports/runs/osm-overpass/hotels
-POST /geo-imports/runs/osm-overpass/beaches
+DONE POST /geo-imports/runs/osm-overpass/hotels
+DONE POST /geo-imports/runs/osm-overpass/beaches
 GET  /geo-imports/runs
-GET  /geo-imports/runs/:runId
+DONE GET  /geo-imports/runs/:runId
 
 GET  /geo-data/hotel-candidates
 GET  /geo-data/hotel-candidates/:id
@@ -937,18 +937,18 @@ POST /geo-imports/runs/fsq/cyprus
 
 The recommended first implementation scope is:
 
-1. Verify that the expected source files exist at the paths listed in this
+1. DONE Verify that the expected source files exist at the paths listed in this
    document.
-2. Create `geo_import_runs` collection and indexes.
-3. Create `hotel_geo_candidates` collection and indexes.
-4. Create `beach_profiles` collection and indexes.
-5. Implement import from `hotels.geojson` into `hotel_geo_candidates`.
-6. Implement import from `beaches.geojson` into `beach_profiles`.
-7. Add duplicate-safe upsert by source id.
-8. Add import stats.
-9. Add lifecycle fields and hash comparison.
+2. DONE Create `geo_import_runs` collection and indexes.
+3. DONE Create `hotel_geo_candidates` collection and indexes.
+4. DONE Create `beach_profiles` collection and indexes.
+5. DONE Implement import from `hotels.geojson` into `hotel_geo_candidates`.
+6. DONE Implement import from `beaches.geojson` into `beach_profiles`.
+7. DONE Add duplicate-safe upsert by source id.
+8. DONE Add import stats.
+9. DONE Add lifecycle fields and hash comparison.
 10. Add read-only list/detail/stats endpoints.
-11. Do not implement hotel matching yet.
+11. DONE Do not implement hotel matching yet.
 
 ## Immediate next step
 

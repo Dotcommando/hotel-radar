@@ -1,3 +1,4 @@
+import { NotFoundException } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { GEO_IMPORT_KIND } from '../geo-import-runs/constants/geo-import-kind.enum';
 import { GEO_IMPORT_RUN_STATUS } from '../geo-import-runs/constants/geo-import-run-status.enum';
@@ -8,8 +9,8 @@ import { GeoImportRunNotFoundError } from './errors/geo-import-run-not-found.err
 import { IGetGeoImportRunResult } from './types/get-geo-import-run-result.interface';
 import { IGeoImportRunResult } from './types/geo-import-run-result.interface';
 import { GetGeoImportRunUseCase } from './use-cases/get-geo-import-run.use-case';
+import { StartOsmOverpassBeachesImportUseCase } from './use-cases/start-osm-overpass-beaches-import.use-case';
 import { StartOsmOverpassHotelsImportUseCase } from './use-cases/start-osm-overpass-hotels-import.use-case';
-import { NotFoundException } from '@nestjs/common';
 
 describe('GeoImportsController', () => {
   let controller: GeoImportsController;
@@ -19,12 +20,18 @@ describe('GeoImportsController', () => {
   let startOsmOverpassHotelsImportUseCase: {
     execute: jest.Mock<Promise<IGeoImportRunResult>, []>;
   };
+  let startOsmOverpassBeachesImportUseCase: {
+    execute: jest.Mock<Promise<IGeoImportRunResult>, []>;
+  };
 
   beforeEach(async () => {
     getGeoImportRunUseCase = {
       execute: jest.fn(),
     };
     startOsmOverpassHotelsImportUseCase = {
+      execute: jest.fn(),
+    };
+    startOsmOverpassBeachesImportUseCase = {
       execute: jest.fn(),
     };
 
@@ -38,6 +45,10 @@ describe('GeoImportsController', () => {
         {
           provide: StartOsmOverpassHotelsImportUseCase,
           useValue: startOsmOverpassHotelsImportUseCase,
+        },
+        {
+          provide: StartOsmOverpassBeachesImportUseCase,
+          useValue: startOsmOverpassBeachesImportUseCase,
         },
       ],
     }).compile();
@@ -71,6 +82,34 @@ describe('GeoImportsController', () => {
       resultFixture,
     );
     expect(startOsmOverpassHotelsImportUseCase.execute).toHaveBeenCalledWith();
+  });
+
+  it('starts OSM Overpass beach import', async () => {
+    const resultFixture: IGeoImportRunResult = {
+      importKind: GEO_IMPORT_KIND.BEACHES,
+      ok: true,
+      runId: '2026-05-06T09-10-00-overpass-turbo-beaches',
+      sourceDataset: GEO_SOURCE_DATASET.OVERPASS_TURBO,
+      sourceType: GEO_SOURCE_TYPE.OSM,
+      stats: {
+        failed: 0,
+        inserted: 1,
+        markedStale: 0,
+        read: 1,
+        unchanged: 0,
+        updated: 0,
+      },
+      status: GEO_IMPORT_RUN_STATUS.COMPLETED,
+    };
+
+    startOsmOverpassBeachesImportUseCase.execute.mockResolvedValue(
+      resultFixture,
+    );
+
+    await expect(controller.importOsmOverpassBeaches()).resolves.toEqual(
+      resultFixture,
+    );
+    expect(startOsmOverpassBeachesImportUseCase.execute).toHaveBeenCalledWith();
   });
 
   it('returns geo import run status by id', async () => {
