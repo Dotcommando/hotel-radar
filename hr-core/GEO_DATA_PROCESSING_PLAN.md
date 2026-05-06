@@ -885,12 +885,12 @@ Recommended first version:
 ```txt
 DONE POST /geo-imports/runs/osm-overpass/hotels
 DONE POST /geo-imports/runs/osm-overpass/beaches
-GET  /geo-imports/runs
+DONE GET  /geo-imports/runs
 DONE GET  /geo-imports/runs/:runId
 
 GET  /geo-data/hotel-candidates
 GET  /geo-data/hotel-candidates/:id
-GET  /geo-data/hotel-candidates/stats
+DONE GET  /geo-data/hotel-candidates/stats
 
 GET  /geo-data/beaches
 GET  /geo-data/beaches/:id

@@ -10,7 +10,9 @@ import {
 import { GeoImportRunNotFoundError } from './errors/geo-import-run-not-found.error';
 import { IGetGeoImportRunResult } from './types/get-geo-import-run-result.interface';
 import { IGeoImportRunResult } from './types/geo-import-run-result.interface';
+import { IListGeoImportRunsResult } from './types/list-geo-import-runs-result.interface';
 import { GetGeoImportRunUseCase } from './use-cases/get-geo-import-run.use-case';
+import { ListGeoImportRunsUseCase } from './use-cases/list-geo-import-runs.use-case';
 import { StartOsmOverpassBeachesImportUseCase } from './use-cases/start-osm-overpass-beaches-import.use-case';
 import { StartOsmOverpassHotelsImportUseCase } from './use-cases/start-osm-overpass-hotels-import.use-case';
 
@@ -18,6 +20,7 @@ import { StartOsmOverpassHotelsImportUseCase } from './use-cases/start-osm-overp
 export class GeoImportsController {
   constructor(
     private readonly getGeoImportRunUseCase: GetGeoImportRunUseCase,
+    private readonly listGeoImportRunsUseCase: ListGeoImportRunsUseCase,
     private readonly startOsmOverpassBeachesImportUseCase: StartOsmOverpassBeachesImportUseCase,
     private readonly startOsmOverpassHotelsImportUseCase: StartOsmOverpassHotelsImportUseCase,
   ) {}
@@ -32,6 +35,11 @@ export class GeoImportsController {
   @HttpCode(HttpStatus.ACCEPTED)
   async importOsmOverpassBeaches(): Promise<IGeoImportRunResult> {
     return this.startOsmOverpassBeachesImportUseCase.execute();
+  }
+
+  @Get('runs')
+  async listRuns(): Promise<IListGeoImportRunsResult> {
+    return this.listGeoImportRunsUseCase.execute();
   }
 
   @Get('runs/:runId')

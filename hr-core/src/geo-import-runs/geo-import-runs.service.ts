@@ -59,6 +59,16 @@ export class GeoImportRunsService {
       .exec();
   }
 
+  async listRecent(limit: number): Promise<IGeoImportRun[]> {
+    return this.geoImportRunModel
+      .find({})
+      .sort({
+        startedAt: -1,
+      })
+      .limit(limit)
+      .exec();
+  }
+
   async markCompleted(
     runId: Types.ObjectId,
     stats: IGeoImportRunStats,

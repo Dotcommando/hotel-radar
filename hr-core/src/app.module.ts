@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { MongooseModule } from '@nestjs/mongoose';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
+import { GeoDataModule } from './geo-data/geo-data.module';
 import { GeoImportsModule } from './geo-imports/geo-imports.module';
 import { GovCyPdfHotelsModule } from './gov-cy-pdf-hotels/gov-cy-pdf-hotels.module';
 import { HotelProcessingModule } from './hotel-processing/hotel-processing.module';
@@ -17,6 +18,7 @@ const MONGODB_URI =
       lazyConnection: true,
       retryAttempts: 0,
     }),
+    GeoDataModule,
     GeoImportsModule,
     GovCyPdfHotelsModule,
     HotelProcessingModule,

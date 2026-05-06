@@ -6,6 +6,7 @@ import { GeoImportsController } from './geo-imports.controller';
 import { GeoJsonBeachProfilesImportService } from './services/geo-json-beach-profiles-import.service';
 import { GeoJsonHotelCandidatesImportService } from './services/geo-json-hotel-candidates-import.service';
 import { GetGeoImportRunUseCase } from './use-cases/get-geo-import-run.use-case';
+import { ListGeoImportRunsUseCase } from './use-cases/list-geo-import-runs.use-case';
 import { StartOsmOverpassBeachesImportUseCase } from './use-cases/start-osm-overpass-beaches-import.use-case';
 import { StartOsmOverpassHotelsImportUseCase } from './use-cases/start-osm-overpass-hotels-import.use-case';
 
@@ -16,6 +17,7 @@ import { StartOsmOverpassHotelsImportUseCase } from './use-cases/start-osm-overp
     GeoJsonBeachProfilesImportService,
     GeoJsonHotelCandidatesImportService,
     GetGeoImportRunUseCase,
+    ListGeoImportRunsUseCase,
     StartOsmOverpassBeachesImportUseCase,
     StartOsmOverpassHotelsImportUseCase,
   ],

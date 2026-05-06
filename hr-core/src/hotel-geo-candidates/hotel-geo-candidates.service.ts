@@ -8,7 +8,13 @@ import { HOTEL_GEO_CANDIDATE_MATCH_STATUS } from './constants/hotel-geo-candidat
 import { HOTEL_GEO_CANDIDATE_MODEL_NAME } from './constants/hotel-geo-candidate-model-name.constant';
 import { HOTEL_GEO_CANDIDATE_UPSERT_RESULT } from './constants/hotel-geo-candidate-upsert-result.enum';
 import { IHotelGeoCandidate } from './types/hotel-geo-candidate.interface';
+import { IHotelGeoCandidatesStats } from './types/hotel-geo-candidates-stats.interface';
 import { IUpsertOsmOverpassHotelGeoCandidate } from './types/upsert-osm-overpass-hotel-geo-candidate.interface';
+
+interface IStringCountAggregationResult {
+  _id: string | null;
+  count: number;
+}
 
 @Injectable()
 export class HotelGeoCandidatesService {
@@ -130,5 +136,129 @@ export class HotelGeoCandidatesService {
       .exec();
 
     return result.modifiedCount;
+  }
+
+  async getStats(): Promise<IHotelGeoCandidatesStats> {
+    const [
+      total,
+      withName,
+      withPhone,
+      withWebsite,
+      byTourismTagRows,
+      byLifecycleStatusRows,
+      byMatchStatusRows,
+    ] = await Promise.all([
+      this.hotelGeoCandidateModel.countDocuments({}).exec(),
+      this.hotelGeoCandidateModel
+        .countDocuments({
+          name: {
+            $nin: [null, ''],
+          },
+        })
+        .exec(),
+      this.hotelGeoCandidateModel
+        .countDocuments({
+          $or: [
+            this.existsNonEmptySourcePropertyFilter('phone'),
+            this.existsNonEmptySourcePropertyFilter('contact:phone'),
+          ],
+        })
+        .exec(),
+      this.hotelGeoCandidateModel
+        .countDocuments({
+          $or: [
+            this.existsNonEmptySourcePropertyFilter('website'),
+            this.existsNonEmptySourcePropertyFilter('contact:website'),
+            this.existsNonEmptySourcePropertyFilter('url'),
+          ],
+        })
+        .exec(),
+      this.countByField('sourceProperties.tourism'),
+      this.countByField('lifecycle.status'),
+      this.countByField('matchStatus'),
+    ]);
+
+    return {
+      byLifecycleStatus: {
+        [HOTEL_GEO_CANDIDATE_LIFECYCLE_STATUS.ACTIVE]:
+          this.readCount(byLifecycleStatusRows, HOTEL_GEO_CANDIDATE_LIFECYCLE_STATUS.ACTIVE),
+        [HOTEL_GEO_CANDIDATE_LIFECYCLE_STATUS.REMOVED_FROM_SOURCE]:
+          this.readCount(
+            byLifecycleStatusRows,
+            HOTEL_GEO_CANDIDATE_LIFECYCLE_STATUS.REMOVED_FROM_SOURCE,
+          ),
+        [HOTEL_GEO_CANDIDATE_LIFECYCLE_STATUS.STALE]:
+          this.readCount(byLifecycleStatusRows, HOTEL_GEO_CANDIDATE_LIFECYCLE_STATUS.STALE),
+      },
+      byMatchStatus: {
+        [HOTEL_GEO_CANDIDATE_MATCH_STATUS.AUTO_MATCHED]: this.readCount(
+          byMatchStatusRows,
+          HOTEL_GEO_CANDIDATE_MATCH_STATUS.AUTO_MATCHED,
+        ),
+        [HOTEL_GEO_CANDIDATE_MATCH_STATUS.CONFIRMED]: this.readCount(
+          byMatchStatusRows,
+          HOTEL_GEO_CANDIDATE_MATCH_STATUS.CONFIRMED,
+        ),
+        [HOTEL_GEO_CANDIDATE_MATCH_STATUS.NEEDS_REVIEW]: this.readCount(
+          byMatchStatusRows,
+          HOTEL_GEO_CANDIDATE_MATCH_STATUS.NEEDS_REVIEW,
+        ),
+        [HOTEL_GEO_CANDIDATE_MATCH_STATUS.REJECTED]: this.readCount(
+          byMatchStatusRows,
+          HOTEL_GEO_CANDIDATE_MATCH_STATUS.REJECTED,
+        ),
+        [HOTEL_GEO_CANDIDATE_MATCH_STATUS.UNMATCHED]: this.readCount(
+          byMatchStatusRows,
+          HOTEL_GEO_CANDIDATE_MATCH_STATUS.UNMATCHED,
+        ),
+      },
+      byTourismTag: this.rowsToRecord(byTourismTagRows),
+      total,
+      withName,
+      withPhone,
+      withWebsite,
+    };
+  }
+
+  private async countByField(
+    fieldName: string,
+  ): Promise<IStringCountAggregationResult[]> {
+    return this.hotelGeoCandidateModel
+      .aggregate<IStringCountAggregationResult>([
+        {
+          $group: {
+            _id: `$${fieldName}`,
+            count: {
+              $sum: 1,
+            },
+          },
+        },
+      ])
+      .exec();
+  }
+
+  private existsNonEmptySourcePropertyFilter(
+    key: string,
+  ): Record<string, unknown> {
+    return {
+      [`sourceProperties.${key}`]: {
+        $exists: true,
+        $nin: [null, ''],
+      },
+    };
+  }
+
+  private rowsToRecord(rows: IStringCountAggregationResult[]): Record<string, number> {
+    return rows.reduce<Record<string, number>>((result, row) => {
+      if (row._id !== null && row._id.trim().length > 0) {
+        result[row._id] = row.count;
+      }
+
+      return result;
+    }, {});
+  }
+
+  private readCount(rows: IStringCountAggregationResult[], key: string): number {
+    return rows.find((row) => row._id === key)?.count ?? 0;
   }
 }

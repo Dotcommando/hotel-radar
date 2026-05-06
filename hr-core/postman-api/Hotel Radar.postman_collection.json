@@ -422,6 +422,49 @@
       "response": []
     },
     {
+      "name": "Geo Import. List Runs",
+      "request": {
+        "auth": {
+          "type": "noauth"
+        },
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{hrCoreBaseUrl}}/geo-imports/runs",
+          "host": [
+            "{{hrCoreBaseUrl}}"
+          ],
+          "path": [
+            "geo-imports",
+            "runs"
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Geo Data. Hotel candidates stats",
+      "request": {
+        "auth": {
+          "type": "noauth"
+        },
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{hrCoreBaseUrl}}/geo-data/hotel-candidates/stats",
+          "host": [
+            "{{hrCoreBaseUrl}}"
+          ],
+          "path": [
+            "geo-data",
+            "hotel-candidates",
+            "stats"
+          ]
+        }
+      },
+      "response": []
+    },
+    {
       "name": "Check Run by Id",
       "request": {
         "auth": {
