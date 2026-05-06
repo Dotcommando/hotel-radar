@@ -16,20 +16,24 @@ import type { IListUnmatchedCanonicalHotelsQuery } from '../geo-matching/types/l
 import type { IListUnmatchedCanonicalHotelsResult } from '../geo-matching/types/list-unmatched-canonical-hotels-result.interface';
 import { BeachProfileNotFoundError } from './errors/beach-profile-not-found.error';
 import { HotelGeoCandidateNotFoundError } from './errors/hotel-geo-candidate-not-found.error';
+import { InvalidNearbyHotelGeoCandidatesQueryError } from './errors/invalid-nearby-hotel-geo-candidates-query.error';
 import { IGetBeachProfileResult } from './types/get-beach-profile-result.interface';
 import { IGetBeachProfilesStatsResult } from './types/get-beach-profiles-stats-result.interface';
 import { IGetHotelGeoCandidateResult } from './types/get-hotel-geo-candidate-result.interface';
 import { IGetHotelGeoCandidatesStatsResult } from './types/get-hotel-geo-candidates-stats-result.interface';
 import { IListBeachProfilesResult } from './types/list-beach-profiles-result.interface';
 import { IListHotelGeoCandidatesResult } from './types/list-hotel-geo-candidates-result.interface';
+import { IListNearbyUnmatchedHotelGeoCandidatesResult } from './types/list-nearby-unmatched-hotel-geo-candidates-result.interface';
 import { GetBeachProfileUseCase } from './use-cases/get-beach-profile.use-case';
 import { GetBeachProfilesStatsUseCase } from './use-cases/get-beach-profiles-stats.use-case';
 import { GetHotelGeoCandidateUseCase } from './use-cases/get-hotel-geo-candidate.use-case';
 import { GetHotelGeoCandidatesStatsUseCase } from './use-cases/get-hotel-geo-candidates-stats.use-case';
 import { ListBeachProfilesUseCase } from './use-cases/list-beach-profiles.use-case';
 import { ListHotelGeoCandidatesUseCase } from './use-cases/list-hotel-geo-candidates.use-case';
+import { ListNearbyUnmatchedHotelGeoCandidatesUseCase } from './use-cases/list-nearby-unmatched-hotel-geo-candidates.use-case';
 import type { IListBeachProfilesQuery } from './types/list-beach-profiles-query.interface';
 import type { IListHotelGeoCandidatesQuery } from './types/list-hotel-geo-candidates-query.interface';
+import type { IListNearbyUnmatchedHotelGeoCandidatesQuery } from './types/list-nearby-unmatched-hotel-geo-candidates-query.interface';
 
 @Controller('geo-data')
 export class GeoDataController {
@@ -42,6 +46,7 @@ export class GeoDataController {
     private readonly listUnmatchedCanonicalHotelsUseCase: ListUnmatchedCanonicalHotelsUseCase,
     private readonly listBeachProfilesUseCase: ListBeachProfilesUseCase,
     private readonly listHotelGeoCandidatesUseCase: ListHotelGeoCandidatesUseCase,
+    private readonly listNearbyUnmatchedHotelGeoCandidatesUseCase: ListNearbyUnmatchedHotelGeoCandidatesUseCase,
   ) {}
 
   @Post('hotel-candidates/match/auto')
@@ -92,6 +97,28 @@ export class GeoDataController {
     @Query() query: IListHotelGeoCandidatesQuery,
   ): Promise<IListHotelGeoCandidatesResult> {
     return this.listHotelGeoCandidatesUseCase.execute(query);
+  }
+
+  @Get('hotel-candidates/nearby-unmatched')
+  async listNearbyUnmatchedHotelCandidates(
+    @Query() query: IListNearbyUnmatchedHotelGeoCandidatesQuery,
+  ): Promise<IListNearbyUnmatchedHotelGeoCandidatesResult> {
+    try {
+      return await this.listNearbyUnmatchedHotelGeoCandidatesUseCase.execute(
+        query,
+      );
+    } catch (error) {
+      if (error instanceof InvalidNearbyHotelGeoCandidatesQueryError) {
+        throw new BadRequestException({
+          code: 'INVALID_NEARBY_HOTEL_GEO_CANDIDATES_QUERY',
+          field: error.field,
+          message: error.message,
+          ok: false,
+        });
+      }
+
+      throw error;
+    }
   }
 
   @Get('hotel-candidates/stats')

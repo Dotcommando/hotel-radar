@@ -548,6 +548,46 @@
           "response": []
         },
         {
+          "name": "Data. Nearby unmatched hotel candidates",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{hrCoreBaseUrl}}/geo-data/hotel-candidates/nearby-unmatched?lat=35.1695948&lng=33.3632663&radiusMeters=1000&limit=50",
+              "host": [
+                "{{hrCoreBaseUrl}}"
+              ],
+              "path": [
+                "geo-data",
+                "hotel-candidates",
+                "nearby-unmatched"
+              ],
+              "query": [
+                {
+                  "key": "lat",
+                  "value": "35.1695948"
+                },
+                {
+                  "key": "lng",
+                  "value": "33.3632663"
+                },
+                {
+                  "key": "radiusMeters",
+                  "value": "1000"
+                },
+                {
+                  "key": "limit",
+                  "value": "50"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
           "name": "Data. Hotel candidate by query Id",
           "request": {
             "auth": {

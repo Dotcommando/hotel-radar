@@ -9,6 +9,7 @@ import { GetHotelGeoCandidateUseCase } from './use-cases/get-hotel-geo-candidate
 import { GetHotelGeoCandidatesStatsUseCase } from './use-cases/get-hotel-geo-candidates-stats.use-case';
 import { ListBeachProfilesUseCase } from './use-cases/list-beach-profiles.use-case';
 import { ListHotelGeoCandidatesUseCase } from './use-cases/list-hotel-geo-candidates.use-case';
+import { ListNearbyUnmatchedHotelGeoCandidatesUseCase } from './use-cases/list-nearby-unmatched-hotel-geo-candidates.use-case';
 
 @Module({
   controllers: [GeoDataController],
@@ -20,6 +21,7 @@ import { ListHotelGeoCandidatesUseCase } from './use-cases/list-hotel-geo-candid
     GetHotelGeoCandidatesStatsUseCase,
     ListBeachProfilesUseCase,
     ListHotelGeoCandidatesUseCase,
+    ListNearbyUnmatchedHotelGeoCandidatesUseCase,
   ],
 })
 export class GeoDataModule {}

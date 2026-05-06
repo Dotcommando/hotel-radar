@@ -9,6 +9,8 @@ import { HOTEL_GEO_CANDIDATE_MODEL_NAME } from './constants/hotel-geo-candidate-
 import { HOTEL_GEO_CANDIDATE_UPSERT_RESULT } from './constants/hotel-geo-candidate-upsert-result.enum';
 import { IHotelGeoCandidate } from './types/hotel-geo-candidate.interface';
 import { IHotelGeoCandidateListFilters } from './types/hotel-geo-candidate-list-filters.interface';
+import { IHotelGeoCandidateNearbyFilters } from './types/hotel-geo-candidate-nearby-filters.interface';
+import { IHotelGeoCandidateWithDistance } from './types/hotel-geo-candidate-with-distance.interface';
 import { IHotelGeoCandidatesStats } from './types/hotel-geo-candidates-stats.interface';
 import { IUpsertOsmOverpassHotelGeoCandidate } from './types/upsert-osm-overpass-hotel-geo-candidate.interface';
 
@@ -168,6 +170,34 @@ export class HotelGeoCandidatesService {
       })
       .skip(filters.offset)
       .limit(filters.limit)
+      .exec();
+  }
+
+  async listNearbyUnmatched(
+    filters: IHotelGeoCandidateNearbyFilters,
+  ): Promise<IHotelGeoCandidateWithDistance[]> {
+    return this.hotelGeoCandidateModel
+      .aggregate<IHotelGeoCandidateWithDistance>([
+        {
+          $geoNear: {
+            distanceField: 'distanceMeters',
+            key: 'point',
+            maxDistance: filters.radiusMeters,
+            near: {
+              coordinates: [filters.lng, filters.lat],
+              type: 'Point',
+            },
+            query: {
+              'lifecycle.status': HOTEL_GEO_CANDIDATE_LIFECYCLE_STATUS.ACTIVE,
+              matchStatus: HOTEL_GEO_CANDIDATE_MATCH_STATUS.UNMATCHED,
+            },
+            spherical: true,
+          },
+        },
+        {
+          $limit: filters.limit,
+        },
+      ])
       .exec();
   }
 

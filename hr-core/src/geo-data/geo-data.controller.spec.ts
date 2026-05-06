@@ -21,18 +21,21 @@ import { HOTEL_GEO_CANDIDATE_MATCH_STATUS } from '../hotel-geo-candidates/consta
 import { GeoDataController } from './geo-data.controller';
 import { BeachProfileNotFoundError } from './errors/beach-profile-not-found.error';
 import { HotelGeoCandidateNotFoundError } from './errors/hotel-geo-candidate-not-found.error';
+import { InvalidNearbyHotelGeoCandidatesQueryError } from './errors/invalid-nearby-hotel-geo-candidates-query.error';
 import { IGetBeachProfileResult } from './types/get-beach-profile-result.interface';
 import { IGetBeachProfilesStatsResult } from './types/get-beach-profiles-stats-result.interface';
 import { IGetHotelGeoCandidateResult } from './types/get-hotel-geo-candidate-result.interface';
 import { IGetHotelGeoCandidatesStatsResult } from './types/get-hotel-geo-candidates-stats-result.interface';
 import { IListBeachProfilesResult } from './types/list-beach-profiles-result.interface';
 import { IListHotelGeoCandidatesResult } from './types/list-hotel-geo-candidates-result.interface';
+import { IListNearbyUnmatchedHotelGeoCandidatesResult } from './types/list-nearby-unmatched-hotel-geo-candidates-result.interface';
 import { GetBeachProfileUseCase } from './use-cases/get-beach-profile.use-case';
 import { GetBeachProfilesStatsUseCase } from './use-cases/get-beach-profiles-stats.use-case';
 import { GetHotelGeoCandidateUseCase } from './use-cases/get-hotel-geo-candidate.use-case';
 import { GetHotelGeoCandidatesStatsUseCase } from './use-cases/get-hotel-geo-candidates-stats.use-case';
 import { ListBeachProfilesUseCase } from './use-cases/list-beach-profiles.use-case';
 import { ListHotelGeoCandidatesUseCase } from './use-cases/list-hotel-geo-candidates.use-case';
+import { ListNearbyUnmatchedHotelGeoCandidatesUseCase } from './use-cases/list-nearby-unmatched-hotel-geo-candidates.use-case';
 
 describe('GeoDataController', () => {
   let controller: GeoDataController;
@@ -53,6 +56,12 @@ describe('GeoDataController', () => {
   };
   let listHotelGeoCandidatesUseCase: {
     execute: jest.Mock<Promise<IListHotelGeoCandidatesResult>, [unknown]>;
+  };
+  let listNearbyUnmatchedHotelGeoCandidatesUseCase: {
+    execute: jest.Mock<
+      Promise<IListNearbyUnmatchedHotelGeoCandidatesResult>,
+      [unknown]
+    >;
   };
   let listUnmatchedCanonicalHotelsUseCase: {
     execute: jest.Mock<Promise<IListUnmatchedCanonicalHotelsResult>, [unknown]>;
@@ -78,6 +87,9 @@ describe('GeoDataController', () => {
       execute: jest.fn(),
     };
     listHotelGeoCandidatesUseCase = {
+      execute: jest.fn(),
+    };
+    listNearbyUnmatchedHotelGeoCandidatesUseCase = {
       execute: jest.fn(),
     };
     listUnmatchedCanonicalHotelsUseCase = {
@@ -113,6 +125,10 @@ describe('GeoDataController', () => {
         {
           provide: ListHotelGeoCandidatesUseCase,
           useValue: listHotelGeoCandidatesUseCase,
+        },
+        {
+          provide: ListNearbyUnmatchedHotelGeoCandidatesUseCase,
+          useValue: listNearbyUnmatchedHotelGeoCandidatesUseCase,
         },
         {
           provide: ListUnmatchedCanonicalHotelsUseCase,
@@ -381,6 +397,58 @@ describe('GeoDataController', () => {
       sourceDataset: GEO_SOURCE_DATASET.OVERPASS_TURBO,
       sourceType: GEO_SOURCE_TYPE.OSM,
     });
+  });
+
+  it('lists nearby unmatched hotel geo candidates', async () => {
+    const resultFixture: IListNearbyUnmatchedHotelGeoCandidatesResult = {
+      center: {
+        lat: 35.1695948,
+        lng: 33.3632663,
+      },
+      items: [
+        {
+          ...buildHotelGeoCandidateFixture(),
+          distanceMeters: 110.5,
+        },
+      ],
+      limit: 25,
+      ok: true,
+      radiusMeters: 750,
+      total: 1,
+    };
+
+    listNearbyUnmatchedHotelGeoCandidatesUseCase.execute.mockResolvedValue(
+      resultFixture,
+    );
+
+    await expect(
+      controller.listNearbyUnmatchedHotelCandidates({
+        lat: '35.1695948',
+        limit: '25',
+        lng: '33.3632663',
+        radiusMeters: '750',
+      }),
+    ).resolves.toEqual(resultFixture);
+    expect(
+      listNearbyUnmatchedHotelGeoCandidatesUseCase.execute,
+    ).toHaveBeenCalledWith({
+      lat: '35.1695948',
+      limit: '25',
+      lng: '33.3632663',
+      radiusMeters: '750',
+    });
+  });
+
+  it('maps invalid nearby hotel geo candidate query to bad request response', async () => {
+    listNearbyUnmatchedHotelGeoCandidatesUseCase.execute.mockRejectedValue(
+      new InvalidNearbyHotelGeoCandidatesQueryError('lat'),
+    );
+
+    await expect(
+      controller.listNearbyUnmatchedHotelCandidates({
+        lng: '33.3632663',
+      }),
+    ).rejects.toBeInstanceOf(BadRequestException);
   });
 
   it('returns hotel geo candidate by id', async () => {
