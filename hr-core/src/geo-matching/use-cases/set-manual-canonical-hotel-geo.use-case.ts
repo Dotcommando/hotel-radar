@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { Types } from 'mongoose';
+import { CANONICAL_HOTEL_STATUS } from '../../canonical-hotels/constants/canonical-hotel-status.enum';
 import type { IGeoPoint } from '../../canonical-hotels/types/hotel-geo.interface';
 import { GEO_MATCH_ACTION } from '../constants/geo-match-action.enum';
 import { MANUAL_CANONICAL_HOTEL_COORDS_REGEXP } from '../constants/manual-canonical-hotel-coords-regexp.constant';
@@ -33,7 +34,10 @@ export class SetManualCanonicalHotelGeoUseCase {
         canonicalHotelId,
       );
 
-    if (canonicalHotel === null) {
+    if (
+      canonicalHotel === null ||
+      canonicalHotel.status !== CANONICAL_HOTEL_STATUS.ACTIVE
+    ) {
       throw new CanonicalHotelForGeoMatchNotFoundError(
         canonicalHotelId.toString(),
       );

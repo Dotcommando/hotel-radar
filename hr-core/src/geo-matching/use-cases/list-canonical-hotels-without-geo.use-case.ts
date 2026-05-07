@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { CANONICAL_HOTEL_STATUS } from '../../canonical-hotels/constants/canonical-hotel-status.enum';
 import { GeoHotelMatchingRepository } from '../repositories/geo-hotel-matching.repository';
 import { IAutoMatchHotelGeoCandidateResultItem } from '../types/auto-match-hotel-geo-candidates-result.interface';
 import { IListCanonicalHotelsWithoutGeoQuery } from '../types/list-canonical-hotels-without-geo-query.interface';
@@ -19,9 +20,16 @@ export class ListCanonicalHotelsWithoutGeoUseCase {
     const limit = this.parsePositiveInteger(query.limit, 50);
     const offset = this.parseNonNegativeInteger(query.offset, 0);
     const suggestionLimit = this.parsePositiveInteger(query.suggestionLimit, 5);
-    const includeSuggestions = this.parseBoolean(query.includeSuggestions, true);
+    const includeSuggestions = this.parseBoolean(
+      query.includeSuggestions,
+      true,
+    );
     const hotels = await this.repository.listCanonicalHotelsForGeoMatching();
-    const hotelsWithoutGeo = hotels.filter((hotel) => hotel.geo.point === null);
+    const hotelsWithoutGeo = hotels.filter(
+      (hotel) =>
+        hotel.status === CANONICAL_HOTEL_STATUS.ACTIVE &&
+        hotel.geo.point === null,
+    );
     const suggestionsByHotelId = includeSuggestions
       ? await this.buildSuggestionsByHotelId()
       : new Map<string, IAutoMatchHotelGeoCandidateResultItem[]>();
@@ -36,10 +44,9 @@ export class ListCanonicalHotelsWithoutGeoUseCase {
           location: hotel.location,
           status: hotel.status,
         },
-        suggestions: (suggestionsByHotelId.get(hotel._id.toString()) ?? []).slice(
-          0,
-          suggestionLimit,
-        ),
+        suggestions: (
+          suggestionsByHotelId.get(hotel._id.toString()) ?? []
+        ).slice(0, suggestionLimit),
       })),
       limit,
       offset,
@@ -108,7 +115,8 @@ export class ListCanonicalHotelsWithoutGeoUseCase {
       return defaultValue;
     }
 
-    const parsed = typeof value === 'number' ? value : Number.parseInt(value, 10);
+    const parsed =
+      typeof value === 'number' ? value : Number.parseInt(value, 10);
 
     return Number.isFinite(parsed) ? parsed : defaultValue;
   }

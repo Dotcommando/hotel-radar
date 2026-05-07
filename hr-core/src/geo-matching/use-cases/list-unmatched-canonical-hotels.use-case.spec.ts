@@ -97,11 +97,45 @@ describe('ListUnmatchedCanonicalHotelsUseCase', () => {
     expect(result.total).toBe(1);
     expect(result.items[0].suggestions).toEqual([]);
   });
+
+  it('does not return duplicate or permanently closed canonical hotels', async () => {
+    const activeHotel = buildCanonicalHotelFixture({
+      _id: new Types.ObjectId('69f88430878f7fca1f7e0ac8'),
+      canonicalName: 'ACTIVE HOTEL',
+    });
+    const duplicateHotel = buildCanonicalHotelFixture({
+      _id: new Types.ObjectId('69f88430878f7fca1f7e0ac9'),
+      canonicalName: 'DUPLICATE HOTEL',
+      status: CANONICAL_HOTEL_STATUS.DUPLICATE,
+    });
+    const closedHotel = buildCanonicalHotelFixture({
+      _id: new Types.ObjectId('69f88430878f7fca1f7e0aca'),
+      canonicalName: 'CLOSED HOTEL',
+      status: CANONICAL_HOTEL_STATUS.PERMANENTLY_CLOSED,
+    });
+    const repository = new InMemoryGeoHotelMatchingRepository(
+      [activeHotel, duplicateHotel, closedHotel],
+      [],
+    );
+    const useCase = new ListUnmatchedCanonicalHotelsUseCase(
+      repository,
+      new AutoMatchHotelGeoCandidatesUseCase(repository),
+    );
+
+    const result = await useCase.execute({
+      includeSuggestions: false,
+    });
+
+    expect(result.total).toBe(1);
+    expect(result.items).toHaveLength(1);
+    expect(result.items[0].canonicalHotel._id).toBe(activeHotel._id.toString());
+  });
 });
 
 class InMemoryGeoHotelMatchingRepository extends GeoHotelMatchingRepository {
   readonly appliedMatches: IApplyGeoHotelMatchParams[] = [];
-  readonly appliedManualCanonicalHotelGeo: IApplyManualCanonicalHotelGeoParams[] = [];
+  readonly appliedManualCanonicalHotelGeo: IApplyManualCanonicalHotelGeoParams[] =
+    [];
   readonly appliedManualMatches: IApplyManualGeoHotelMatchParams[] = [];
 
   constructor(
@@ -111,65 +145,75 @@ class InMemoryGeoHotelMatchingRepository extends GeoHotelMatchingRepository {
     super();
   }
 
-  async findCanonicalHotelForGeoMatchingById(
+  findCanonicalHotelForGeoMatchingById(
     id: Types.ObjectId,
   ): Promise<ICanonicalHotel | null> {
-    return this.hotels.find((hotel) => hotel._id.equals(id)) ?? null;
-  }
-
-  async findHotelGeoCandidateForGeoMatchingById(
-    id: Types.ObjectId,
-  ): Promise<IHotelGeoCandidate | null> {
-    return this.candidates.find((candidate) => candidate._id.equals(id)) ?? null;
-  }
-
-  async listCanonicalHotelIdsWithMergedGeoCandidates(): Promise<string[]> {
-    return this.candidates
-      .filter(
-        (candidate) =>
-          candidate.canonicalHotelId !== null &&
-          (candidate.matchStatus === HOTEL_GEO_CANDIDATE_MATCH_STATUS.AUTO_MATCHED ||
-            candidate.matchStatus === HOTEL_GEO_CANDIDATE_MATCH_STATUS.CONFIRMED),
-      )
-      .map((candidate) => candidate.canonicalHotelId?.toString() ?? '');
-  }
-
-  async listCanonicalHotelsForGeoMatching(): Promise<ICanonicalHotel[]> {
-    return this.hotels;
-  }
-
-  async listHotelGeoCandidatesForAutoMatching(): Promise<IHotelGeoCandidate[]> {
-    return this.candidates.filter(
-      (candidate) =>
-        candidate.lifecycle.status ===
-          HOTEL_GEO_CANDIDATE_LIFECYCLE_STATUS.ACTIVE &&
-        (candidate.matchStatus === HOTEL_GEO_CANDIDATE_MATCH_STATUS.UNMATCHED ||
-          candidate.matchStatus === HOTEL_GEO_CANDIDATE_MATCH_STATUS.AUTO_MATCHED),
+    return Promise.resolve(
+      this.hotels.find((hotel) => hotel._id.equals(id)) ?? null,
     );
   }
 
-  async applyAutoMatch(
-    params: IApplyGeoHotelMatchParams,
-  ): Promise<GEO_MATCH_ACTION> {
-    this.appliedMatches.push(params);
-
-    return GEO_MATCH_ACTION.AUTO_MATCHED;
+  findHotelGeoCandidateForGeoMatchingById(
+    id: Types.ObjectId,
+  ): Promise<IHotelGeoCandidate | null> {
+    return Promise.resolve(
+      this.candidates.find((candidate) => candidate._id.equals(id)) ?? null,
+    );
   }
 
-  async applyManualCanonicalHotelGeo(
+  listCanonicalHotelIdsWithMergedGeoCandidates(): Promise<string[]> {
+    return Promise.resolve(
+      this.candidates
+        .filter(
+          (candidate) =>
+            candidate.canonicalHotelId !== null &&
+            (candidate.matchStatus ===
+              HOTEL_GEO_CANDIDATE_MATCH_STATUS.AUTO_MATCHED ||
+              candidate.matchStatus ===
+                HOTEL_GEO_CANDIDATE_MATCH_STATUS.CONFIRMED),
+        )
+        .map((candidate) => candidate.canonicalHotelId?.toString() ?? ''),
+    );
+  }
+
+  listCanonicalHotelsForGeoMatching(): Promise<ICanonicalHotel[]> {
+    return Promise.resolve(this.hotels);
+  }
+
+  listHotelGeoCandidatesForAutoMatching(): Promise<IHotelGeoCandidate[]> {
+    return Promise.resolve(
+      this.candidates.filter(
+        (candidate) =>
+          candidate.lifecycle.status ===
+            HOTEL_GEO_CANDIDATE_LIFECYCLE_STATUS.ACTIVE &&
+          (candidate.matchStatus ===
+            HOTEL_GEO_CANDIDATE_MATCH_STATUS.UNMATCHED ||
+            candidate.matchStatus ===
+              HOTEL_GEO_CANDIDATE_MATCH_STATUS.AUTO_MATCHED),
+      ),
+    );
+  }
+
+  applyAutoMatch(params: IApplyGeoHotelMatchParams): Promise<GEO_MATCH_ACTION> {
+    this.appliedMatches.push(params);
+
+    return Promise.resolve(GEO_MATCH_ACTION.AUTO_MATCHED);
+  }
+
+  applyManualCanonicalHotelGeo(
     params: IApplyManualCanonicalHotelGeoParams,
   ): Promise<GEO_MATCH_ACTION> {
     this.appliedManualCanonicalHotelGeo.push(params);
 
-    return GEO_MATCH_ACTION.MANUAL_GEO_SET;
+    return Promise.resolve(GEO_MATCH_ACTION.MANUAL_GEO_SET);
   }
 
-  async applyManualMatch(
+  applyManualMatch(
     params: IApplyManualGeoHotelMatchParams,
   ): Promise<GEO_MATCH_ACTION> {
     this.appliedManualMatches.push(params);
 
-    return GEO_MATCH_ACTION.MANUAL_MATCHED;
+    return Promise.resolve(GEO_MATCH_ACTION.MANUAL_MATCHED);
   }
 }
 

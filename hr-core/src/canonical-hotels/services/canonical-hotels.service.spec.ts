@@ -66,6 +66,72 @@ describe('CanonicalHotelsService', () => {
     expect(model.documents[0].contacts).toEqual(beforeContacts);
   });
 
+  it('does not reactivate a duplicate canonical hotel on an exact candidate match', async () => {
+    const existing = buildCanonicalHotelFixture({
+      status: CANONICAL_HOTEL_STATUS.DUPLICATE,
+    });
+    const model = new InMemoryCanonicalHotelModel([existing]);
+    const service = new CanonicalHotelsService(
+      model,
+      new HotelDeclaredWebPresenceService(),
+    );
+
+    const result = await service.applyCandidate(buildCandidateFixture());
+
+    expect(result.action).toBe(
+      CANONICAL_HOTEL_PROCESSING_ACTION.SEEN_WITHOUT_CHANGES,
+    );
+    expect(model.documents[0].status).toBe(CANONICAL_HOTEL_STATUS.DUPLICATE);
+  });
+
+  it('does not reactivate a permanently closed canonical hotel on an exact candidate match', async () => {
+    const existing = buildCanonicalHotelFixture({
+      status: CANONICAL_HOTEL_STATUS.PERMANENTLY_CLOSED,
+    });
+    const model = new InMemoryCanonicalHotelModel([existing]);
+    const service = new CanonicalHotelsService(
+      model,
+      new HotelDeclaredWebPresenceService(),
+    );
+
+    const result = await service.applyCandidate(buildCandidateFixture());
+
+    expect(result.action).toBe(
+      CANONICAL_HOTEL_PROCESSING_ACTION.SEEN_WITHOUT_CHANGES,
+    );
+    expect(model.documents[0].status).toBe(
+      CANONICAL_HOTEL_STATUS.PERMANENTLY_CLOSED,
+    );
+  });
+
+  it('does not reactivate a non-active canonical hotel when candidate facts changed', async () => {
+    const existing = buildCanonicalHotelFixture({
+      capacity: {
+        beds: 10,
+        mode: CANONICAL_HOTEL_CAPACITY_MODE.SINGLE_COMPONENT,
+        rooms: 5,
+      },
+      status: CANONICAL_HOTEL_STATUS.PERMANENTLY_CLOSED,
+    });
+    const model = new InMemoryCanonicalHotelModel([existing]);
+    const service = new CanonicalHotelsService(
+      model,
+      new HotelDeclaredWebPresenceService(),
+    );
+
+    const result = await service.applyCandidate(buildCandidateFixture());
+
+    expect(result.action).toBe(CANONICAL_HOTEL_PROCESSING_ACTION.UPDATED);
+    expect(model.documents[0].capacity).toEqual({
+      beds: 12,
+      mode: CANONICAL_HOTEL_CAPACITY_MODE.SINGLE_COMPONENT,
+      rooms: 6,
+    });
+    expect(model.documents[0].status).toBe(
+      CANONICAL_HOTEL_STATUS.PERMANENTLY_CLOSED,
+    );
+  });
+
   it('requires review on conflicting location and does not modify canonical hotels', async () => {
     const existing = buildCanonicalHotelFixture({
       canonicalKey:
@@ -285,10 +351,12 @@ class InMemoryCanonicalHotelModel {
     exec: () => Promise<ICanonicalHotel | null>;
   } {
     return {
-      exec: async (): Promise<ICanonicalHotel | null> =>
-        this.rows.find(
-          ({ canonicalKey }) => canonicalKey === filter.canonicalKey,
-        ) ?? null,
+      exec: (): Promise<ICanonicalHotel | null> =>
+        Promise.resolve(
+          this.rows.find(
+            ({ canonicalKey }) => canonicalKey === filter.canonicalKey,
+          ) ?? null,
+        ),
     };
   }
 
@@ -296,19 +364,21 @@ class InMemoryCanonicalHotelModel {
     exec: () => Promise<ICanonicalHotel[]>;
   } {
     return {
-      exec: async (): Promise<ICanonicalHotel[]> =>
-        this.rows.filter((document) =>
-          Object.entries(filter).every(([field, value]) =>
-            this.matchesField(document, field, value),
+      exec: (): Promise<ICanonicalHotel[]> =>
+        Promise.resolve(
+          this.rows.filter((document) =>
+            Object.entries(filter).every(([field, value]) =>
+              this.matchesField(document, field, value),
+            ),
           ),
         ),
     };
   }
 
-  async create(document: ICanonicalHotel): Promise<ICanonicalHotel> {
+  create(document: ICanonicalHotel): Promise<ICanonicalHotel> {
     this.rows.push(document);
 
-    return document;
+    return Promise.resolve(document);
   }
 
   updateOne(
@@ -318,12 +388,14 @@ class InMemoryCanonicalHotelModel {
     exec: () => Promise<void>;
   } {
     return {
-      exec: async (): Promise<void> => {
+      exec: (): Promise<void> => {
         const document = this.rows.find(({ _id }) => _id.equals(filter._id));
 
         if (document !== undefined) {
           Object.assign(document, update.$set);
         }
+
+        return Promise.resolve();
       },
     };
   }

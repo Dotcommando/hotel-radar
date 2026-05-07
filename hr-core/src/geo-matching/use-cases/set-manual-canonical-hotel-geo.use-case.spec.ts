@@ -135,6 +135,38 @@ describe('SetManualCanonicalHotelGeoUseCase', () => {
     ).rejects.toBeInstanceOf(CanonicalHotelForGeoMatchNotFoundError);
   });
 
+  it('rejects duplicate canonical hotels before applying geo', async () => {
+    const hotel = buildCanonicalHotelFixture({
+      status: CANONICAL_HOTEL_STATUS.DUPLICATE,
+    });
+    const repository = new InMemoryGeoHotelMatchingRepository([hotel], []);
+    const useCase = new SetManualCanonicalHotelGeoUseCase(repository);
+
+    await expect(
+      useCase.execute({
+        canonicalHotelId: hotel._id.toString(),
+        coords: '35.1696808, 33.3634435',
+      }),
+    ).rejects.toBeInstanceOf(CanonicalHotelForGeoMatchNotFoundError);
+    expect(repository.appliedManualCanonicalHotelGeo).toHaveLength(0);
+  });
+
+  it('rejects permanently closed canonical hotels before applying geo', async () => {
+    const hotel = buildCanonicalHotelFixture({
+      status: CANONICAL_HOTEL_STATUS.PERMANENTLY_CLOSED,
+    });
+    const repository = new InMemoryGeoHotelMatchingRepository([hotel], []);
+    const useCase = new SetManualCanonicalHotelGeoUseCase(repository);
+
+    await expect(
+      useCase.execute({
+        canonicalHotelId: hotel._id.toString(),
+        coords: '35.1696808, 33.3634435',
+      }),
+    ).rejects.toBeInstanceOf(CanonicalHotelForGeoMatchNotFoundError);
+    expect(repository.appliedManualCanonicalHotelGeo).toHaveLength(0);
+  });
+
   it('surfaces repository conflicts as manual geo conflicts', async () => {
     const hotel = buildCanonicalHotelFixture();
     const repository = new InMemoryGeoHotelMatchingRepository(

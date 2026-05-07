@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import { CANONICAL_HOTEL_MODEL_NAME } from '../../canonical-hotels/constants/canonical-hotel-model-name.constant';
+import { CANONICAL_HOTEL_STATUS } from '../../canonical-hotels/constants/canonical-hotel-status.enum';
 import { ICanonicalHotel } from '../../canonical-hotels/types/canonical-hotel.interface';
 import { HOTEL_GEO_CANDIDATE_LIFECYCLE_STATUS } from '../../hotel-geo-candidates/constants/hotel-geo-candidate-lifecycle-status.enum';
 import { HOTEL_GEO_CANDIDATE_MATCH_STATUS } from '../../hotel-geo-candidates/constants/hotel-geo-candidate-match-status.enum';
@@ -28,7 +29,12 @@ export class MongooseGeoHotelMatchingRepository extends GeoHotelMatchingReposito
   async findCanonicalHotelForGeoMatchingById(
     id: Types.ObjectId,
   ): Promise<ICanonicalHotel | null> {
-    return this.canonicalHotelModel.findById(id).exec();
+    return this.canonicalHotelModel
+      .findOne({
+        _id: id,
+        status: CANONICAL_HOTEL_STATUS.ACTIVE,
+      })
+      .exec();
   }
 
   async findHotelGeoCandidateForGeoMatchingById(
@@ -59,7 +65,11 @@ export class MongooseGeoHotelMatchingRepository extends GeoHotelMatchingReposito
   }
 
   async listCanonicalHotelsForGeoMatching(): Promise<ICanonicalHotel[]> {
-    return this.canonicalHotelModel.find({}).exec();
+    return this.canonicalHotelModel
+      .find({
+        status: CANONICAL_HOTEL_STATUS.ACTIVE,
+      })
+      .exec();
   }
 
   async listHotelGeoCandidatesForAutoMatching(
@@ -101,8 +111,10 @@ export class MongooseGeoHotelMatchingRepository extends GeoHotelMatchingReposito
     }
 
     const wasAlreadyMatched =
-      existingCandidate.matchStatus === HOTEL_GEO_CANDIDATE_MATCH_STATUS.AUTO_MATCHED &&
-      existingCandidate.canonicalHotelId?.equals(params.canonicalHotelId) === true;
+      existingCandidate.matchStatus ===
+        HOTEL_GEO_CANDIDATE_MATCH_STATUS.AUTO_MATCHED &&
+      existingCandidate.canonicalHotelId?.equals(params.canonicalHotelId) ===
+        true;
 
     if (
       existingCandidate.canonicalHotelId !== null &&
@@ -235,8 +247,10 @@ export class MongooseGeoHotelMatchingRepository extends GeoHotelMatchingReposito
     }
 
     const wasAlreadyMatched =
-      existingCandidate.matchStatus === HOTEL_GEO_CANDIDATE_MATCH_STATUS.CONFIRMED &&
-      existingCandidate.canonicalHotelId?.equals(params.canonicalHotelId) === true;
+      existingCandidate.matchStatus ===
+        HOTEL_GEO_CANDIDATE_MATCH_STATUS.CONFIRMED &&
+      existingCandidate.canonicalHotelId?.equals(params.canonicalHotelId) ===
+        true;
 
     if (
       existingCandidate.canonicalHotelId !== null &&

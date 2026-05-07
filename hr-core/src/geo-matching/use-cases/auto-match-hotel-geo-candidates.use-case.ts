@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { CANONICAL_HOTEL_STATUS } from '../../canonical-hotels/constants/canonical-hotel-status.enum';
 import { ICanonicalHotel } from '../../canonical-hotels/types/canonical-hotel.interface';
 import { IHotelGeoCandidate } from '../../hotel-geo-candidates/types/hotel-geo-candidate.interface';
 import { GEO_MATCH_ACTION } from '../constants/geo-match-action.enum';
@@ -84,14 +85,18 @@ export class AutoMatchHotelGeoCandidatesUseCase {
       this.repository.listCanonicalHotelsForGeoMatching(),
       this.repository.listHotelGeoCandidatesForAutoMatching(limit),
     ]);
-    const hotelIndexes = hotels.map((hotel) => this.buildHotelIndex(hotel));
+    const hotelIndexes = hotels
+      .filter((hotel) => this.isActiveCanonicalHotel(hotel))
+      .map((hotel) => this.buildHotelIndex(hotel));
     const candidateIndexes = candidates.map((candidate) =>
       this.buildCandidateIndex(candidate),
     );
     const proposals = this.buildProposals(candidateIndexes, hotelIndexes);
     const acceptedProposals = this.resolveAcceptedProposals(proposals);
     const acceptedCandidateIds = new Set(
-      acceptedProposals.map((proposal) => proposal.candidate.document._id.toString()),
+      acceptedProposals.map((proposal) =>
+        proposal.candidate.document._id.toString(),
+      ),
     );
     const proposedCandidateIds = new Set(
       proposals.map((proposal) => proposal.candidate.document._id.toString()),
@@ -105,7 +110,10 @@ export class AutoMatchHotelGeoCandidatesUseCase {
     );
 
     for (const proposal of acceptedProposals) {
-      const item = this.buildResultItem(proposal, GEO_MATCH_ACTION.AUTO_MATCHED);
+      const item = this.buildResultItem(
+        proposal,
+        GEO_MATCH_ACTION.AUTO_MATCHED,
+      );
 
       if (dryRun) {
         stats.autoMatched++;
@@ -166,6 +174,10 @@ export class AutoMatchHotelGeoCandidatesUseCase {
     };
   }
 
+  private isActiveCanonicalHotel(hotel: ICanonicalHotel): boolean {
+    return hotel.status === CANONICAL_HOTEL_STATUS.ACTIVE;
+  }
+
   private buildProposals(
     candidates: IGeoMatchCandidateIndex[],
     hotels: IGeoMatchHotelIndex[],
@@ -192,14 +204,14 @@ export class AutoMatchHotelGeoCandidatesUseCase {
       proposals,
       (proposal) => proposal.candidate.document._id.toString(),
     );
-    const proposalsByHotel = this.groupProposalsById(
-      proposals,
-      (proposal) => proposal.hotel.document._id.toString(),
+    const proposalsByHotel = this.groupProposalsById(proposals, (proposal) =>
+      proposal.hotel.document._id.toString(),
     );
 
     return proposals.filter((proposal) => {
       const candidateTop = this.getUniqueTopProposal(
-        proposalsByCandidate.get(proposal.candidate.document._id.toString()) ?? [],
+        proposalsByCandidate.get(proposal.candidate.document._id.toString()) ??
+          [],
       );
       const hotelTop = this.getUniqueTopProposal(
         proposalsByHotel.get(proposal.hotel.document._id.toString()) ?? [],
@@ -264,8 +276,10 @@ export class AutoMatchHotelGeoCandidatesUseCase {
         return right.score - left.score;
       }
 
-      return this.getCandidateSourceRichness(right.candidate.document)
-        - this.getCandidateSourceRichness(left.candidate.document);
+      return (
+        this.getCandidateSourceRichness(right.candidate.document) -
+        this.getCandidateSourceRichness(left.candidate.document)
+      );
     });
 
     if (sorted.length === 0) {
@@ -295,23 +309,25 @@ export class AutoMatchHotelGeoCandidatesUseCase {
     hotel: IGeoMatchHotelIndex,
   ): IGeoMatchProposal | null {
     const nameScore = this.scoreNames(candidate.identity, hotel.identity);
-    const hasStrongContact = this.hasIntersection(
-      candidate.identity.phones,
-      hotel.identity.phones,
-    ) || this.hasIntersection(
-      candidate.identity.strongEmails,
-      hotel.identity.strongEmails,
-    ) || this.hasIntersection(
-      candidate.identity.strongDomains,
-      hotel.identity.strongDomains,
-    );
-    const hasSharedContact = this.hasIntersection(
-      candidate.identity.sharedEmails,
-      hotel.identity.sharedEmails,
-    ) || this.hasIntersection(
-      candidate.identity.sharedDomains,
-      hotel.identity.sharedDomains,
-    );
+    const hasStrongContact =
+      this.hasIntersection(candidate.identity.phones, hotel.identity.phones) ||
+      this.hasIntersection(
+        candidate.identity.strongEmails,
+        hotel.identity.strongEmails,
+      ) ||
+      this.hasIntersection(
+        candidate.identity.strongDomains,
+        hotel.identity.strongDomains,
+      );
+    const hasSharedContact =
+      this.hasIntersection(
+        candidate.identity.sharedEmails,
+        hotel.identity.sharedEmails,
+      ) ||
+      this.hasIntersection(
+        candidate.identity.sharedDomains,
+        hotel.identity.sharedDomains,
+      );
 
     if (hasStrongContact && nameScore.isCompatible) {
       return {
@@ -562,10 +578,17 @@ export class AutoMatchHotelGeoCandidatesUseCase {
     }
 
     if (left.includes(right) || right.includes(left)) {
-      return Math.min(left.length, right.length) / Math.max(left.length, right.length);
+      return (
+        Math.min(left.length, right.length) /
+        Math.max(left.length, right.length)
+      );
     }
 
-    return 1 - this.computeEditDistance(left, right) / Math.max(left.length, right.length);
+    return (
+      1 -
+      this.computeEditDistance(left, right) /
+        Math.max(left.length, right.length)
+    );
   }
 
   private scoreTokenContainment(left: string, right: string): number {
@@ -605,8 +628,7 @@ export class AutoMatchHotelGeoCandidatesUseCase {
       current[0] = leftIndex;
 
       for (let rightIndex = 1; rightIndex <= right.length; rightIndex++) {
-        const cost =
-          left[leftIndex - 1] === right[rightIndex - 1] ? 0 : 1;
+        const cost = left[leftIndex - 1] === right[rightIndex - 1] ? 0 : 1;
         current[rightIndex] = Math.min(
           current[rightIndex - 1] + 1,
           previous[rightIndex] + 1,
@@ -716,9 +738,7 @@ export class AutoMatchHotelGeoCandidatesUseCase {
   ): string | null {
     const value = sourceProperties[key];
 
-    return typeof value === 'string' && value.trim().length > 0
-      ? value
-      : null;
+    return typeof value === 'string' && value.trim().length > 0 ? value : null;
   }
 
   private normalizeAddressText(value: string | null): string | null {
@@ -742,7 +762,8 @@ export class AutoMatchHotelGeoCandidatesUseCase {
       return 0;
     }
 
-    const parsed = typeof value === 'number' ? value : Number.parseInt(value, 10);
+    const parsed =
+      typeof value === 'number' ? value : Number.parseInt(value, 10);
 
     return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
   }

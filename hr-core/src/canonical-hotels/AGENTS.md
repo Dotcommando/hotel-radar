@@ -38,6 +38,22 @@ The current implementation does not store a separate `normalizedName` field in `
 
 Do not add history arrays such as `canonicalHotelCandidateIds`, `hotelRegistryEntryIds`, `rawHotelIds`, `allPreviousVersions`, or `possibleDuplicates`.
 
+## Status Semantics
+
+`canonical_hotels.status` is a lifecycle control field, not a display-only label.
+
+Current statuses:
+
+- `ACTIVE`: the canonical hotel is current and eligible for product-facing use, geo worklists, auto matching, and manual geo matching.
+- `PERMANENTLY_CLOSED`: the real hotel is known to be closed permanently. Keep the document so future ingestion runs do not recreate it as a new active hotel.
+- `DUPLICATE`: the document is a known duplicate of another canonical hotel. Keep the document so future ingestion runs do not recreate the duplicate as a new active hotel.
+
+Non-active statuses must not be silently reactivated by Stage 4. When an incoming candidate deterministically matches an existing `PERMANENTLY_CLOSED` or `DUPLICATE` canonical hotel, preserve its status while updating allowed current facts and seen/source timestamps.
+
+Product-facing reads, geo matching, geo worklists, auto matching, and manual geo endpoints should treat only `ACTIVE` canonical hotels as eligible unless a workflow explicitly exists for reviewing or restoring non-active hotels.
+
+Deleting a closed or duplicate canonical hotel is usually wrong: the next ingestion run can recreate it from the source registry. Prefer marking `status` as `PERMANENTLY_CLOSED` or `DUPLICATE`.
+
 ## Applying Candidates
 
 `CanonicalHotelsService.applyCandidate` is the Stage 4 entry point.
@@ -81,6 +97,8 @@ webPresence
 lastSeenAt
 updatedAt
 ```
+
+Fact updates must not overwrite `status`.
 
 Location is merged conservatively by filling missing existing fields from the candidate. Conflicting non-empty address, locality, or postcode requires review before update.
 

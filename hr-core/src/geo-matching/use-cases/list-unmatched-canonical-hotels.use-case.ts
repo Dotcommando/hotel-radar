@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { CANONICAL_HOTEL_STATUS } from '../../canonical-hotels/constants/canonical-hotel-status.enum';
 import { GeoHotelMatchingRepository } from '../repositories/geo-hotel-matching.repository';
 import { IListUnmatchedCanonicalHotelsQuery } from '../types/list-unmatched-canonical-hotels-query.interface';
 import {
@@ -21,14 +22,19 @@ export class ListUnmatchedCanonicalHotelsUseCase {
     const limit = this.parsePositiveInteger(query.limit, 50);
     const offset = this.parseNonNegativeInteger(query.offset, 0);
     const suggestionLimit = this.parsePositiveInteger(query.suggestionLimit, 5);
-    const includeSuggestions = this.parseBoolean(query.includeSuggestions, true);
+    const includeSuggestions = this.parseBoolean(
+      query.includeSuggestions,
+      true,
+    );
     const [hotels, matchedCanonicalHotelIds] = await Promise.all([
       this.repository.listCanonicalHotelsForGeoMatching(),
       this.repository.listCanonicalHotelIdsWithMergedGeoCandidates(),
     ]);
     const matchedIdSet = new Set(matchedCanonicalHotelIds);
     const unmatchedHotels = hotels.filter(
-      (hotel) => !matchedIdSet.has(hotel._id.toString()),
+      (hotel) =>
+        hotel.status === CANONICAL_HOTEL_STATUS.ACTIVE &&
+        !matchedIdSet.has(hotel._id.toString()),
     );
     const suggestionsByHotelId = includeSuggestions
       ? await this.buildSuggestionsByHotelId()
@@ -44,10 +50,9 @@ export class ListUnmatchedCanonicalHotelsUseCase {
           location: hotel.location,
           status: hotel.status,
         },
-        suggestions: (suggestionsByHotelId.get(hotel._id.toString()) ?? []).slice(
-          0,
-          suggestionLimit,
-        ),
+        suggestions: (
+          suggestionsByHotelId.get(hotel._id.toString()) ?? []
+        ).slice(0, suggestionLimit),
       })),
       limit,
       offset,
@@ -116,7 +121,8 @@ export class ListUnmatchedCanonicalHotelsUseCase {
       return defaultValue;
     }
 
-    const parsed = typeof value === 'number' ? value : Number.parseInt(value, 10);
+    const parsed =
+      typeof value === 'number' ? value : Number.parseInt(value, 10);
 
     return Number.isFinite(parsed) ? parsed : defaultValue;
   }

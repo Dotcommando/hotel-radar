@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { Types } from 'mongoose';
+import { CANONICAL_HOTEL_STATUS } from '../../canonical-hotels/constants/canonical-hotel-status.enum';
 import { GEO_MATCH_ACTION } from '../constants/geo-match-action.enum';
 import { CanonicalHotelForGeoMatchNotFoundError } from '../errors/canonical-hotel-for-geo-match-not-found.error';
 import { GeoHotelManualMatchConflictError } from '../errors/geo-hotel-manual-match-conflict.error';
@@ -26,10 +27,15 @@ export class ManualMatchHotelGeoCandidateUseCase {
     );
     const [canonicalHotel, hotelGeoCandidate] = await Promise.all([
       this.repository.findCanonicalHotelForGeoMatchingById(canonicalHotelId),
-      this.repository.findHotelGeoCandidateForGeoMatchingById(hotelGeoCandidateId),
+      this.repository.findHotelGeoCandidateForGeoMatchingById(
+        hotelGeoCandidateId,
+      ),
     ]);
 
-    if (canonicalHotel === null) {
+    if (
+      canonicalHotel === null ||
+      canonicalHotel.status !== CANONICAL_HOTEL_STATUS.ACTIVE
+    ) {
       throw new CanonicalHotelForGeoMatchNotFoundError(
         canonicalHotelId.toString(),
       );
