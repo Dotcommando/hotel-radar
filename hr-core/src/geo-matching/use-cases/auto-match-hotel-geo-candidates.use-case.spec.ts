@@ -12,6 +12,7 @@ import { GEO_MATCH_ACTION } from '../constants/geo-match-action.enum';
 import { GEO_MATCH_REASON } from '../constants/geo-match-reason.enum';
 import { GeoHotelMatchingRepository } from '../repositories/geo-hotel-matching.repository';
 import { IApplyGeoHotelMatchParams } from '../types/apply-geo-hotel-match-params.interface';
+import { IApplyManualCanonicalHotelGeoParams } from '../types/apply-manual-canonical-hotel-geo-params.interface';
 import { IApplyManualGeoHotelMatchParams } from '../types/apply-manual-geo-hotel-match-params.interface';
 import { AutoMatchHotelGeoCandidatesUseCase } from './auto-match-hotel-geo-candidates.use-case';
 
@@ -212,6 +213,7 @@ describe('AutoMatchHotelGeoCandidatesUseCase', () => {
 
 class InMemoryGeoHotelMatchingRepository extends GeoHotelMatchingRepository {
   readonly appliedMatches: IApplyGeoHotelMatchParams[] = [];
+  readonly appliedManualCanonicalHotelGeo: IApplyManualCanonicalHotelGeoParams[] = [];
   readonly appliedManualMatches: IApplyManualGeoHotelMatchParams[] = [];
 
   constructor(
@@ -268,6 +270,14 @@ class InMemoryGeoHotelMatchingRepository extends GeoHotelMatchingRepository {
     this.appliedMatches.push(params);
 
     return GEO_MATCH_ACTION.AUTO_MATCHED;
+  }
+
+  async applyManualCanonicalHotelGeo(
+    params: IApplyManualCanonicalHotelGeoParams,
+  ): Promise<GEO_MATCH_ACTION> {
+    this.appliedManualCanonicalHotelGeo.push(params);
+
+    return GEO_MATCH_ACTION.MANUAL_GEO_SET;
   }
 
   async applyManualMatch(

@@ -3,6 +3,7 @@ import { ICanonicalHotel } from '../../canonical-hotels/types/canonical-hotel.in
 import { IHotelGeoCandidate } from '../../hotel-geo-candidates/types/hotel-geo-candidate.interface';
 import { GEO_MATCH_ACTION } from '../constants/geo-match-action.enum';
 import { IApplyGeoHotelMatchParams } from '../types/apply-geo-hotel-match-params.interface';
+import { IApplyManualCanonicalHotelGeoParams } from '../types/apply-manual-canonical-hotel-geo-params.interface';
 import { IApplyManualGeoHotelMatchParams } from '../types/apply-manual-geo-hotel-match-params.interface';
 
 export abstract class GeoHotelMatchingRepository {
@@ -24,6 +25,10 @@ export abstract class GeoHotelMatchingRepository {
 
   abstract applyAutoMatch(
     params: IApplyGeoHotelMatchParams,
+  ): Promise<GEO_MATCH_ACTION>;
+
+  abstract applyManualCanonicalHotelGeo(
+    params: IApplyManualCanonicalHotelGeoParams,
   ): Promise<GEO_MATCH_ACTION>;
 
   abstract applyManualMatch(

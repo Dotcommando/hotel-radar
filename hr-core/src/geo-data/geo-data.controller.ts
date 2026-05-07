@@ -9,9 +9,12 @@ import {
   Query,
 } from '@nestjs/common';
 import { AutoMatchHotelGeoCandidatesUseCase } from '../geo-matching/use-cases/auto-match-hotel-geo-candidates.use-case';
+import { ListCanonicalHotelsWithoutGeoUseCase } from '../geo-matching/use-cases/list-canonical-hotels-without-geo.use-case';
 import { ListUnmatchedCanonicalHotelsUseCase } from '../geo-matching/use-cases/list-unmatched-canonical-hotels.use-case';
 import type { IAutoMatchHotelGeoCandidatesRequest } from '../geo-matching/types/auto-match-hotel-geo-candidates-request.interface';
 import type { IAutoMatchHotelGeoCandidatesResult } from '../geo-matching/types/auto-match-hotel-geo-candidates-result.interface';
+import type { IListCanonicalHotelsWithoutGeoQuery } from '../geo-matching/types/list-canonical-hotels-without-geo-query.interface';
+import type { IListCanonicalHotelsWithoutGeoResult } from '../geo-matching/types/list-canonical-hotels-without-geo-result.interface';
 import type { IListUnmatchedCanonicalHotelsQuery } from '../geo-matching/types/list-unmatched-canonical-hotels-query.interface';
 import type { IListUnmatchedCanonicalHotelsResult } from '../geo-matching/types/list-unmatched-canonical-hotels-result.interface';
 import { BeachProfileNotFoundError } from './errors/beach-profile-not-found.error';
@@ -43,6 +46,7 @@ export class GeoDataController {
     private readonly getBeachProfilesStatsUseCase: GetBeachProfilesStatsUseCase,
     private readonly getHotelGeoCandidateUseCase: GetHotelGeoCandidateUseCase,
     private readonly getHotelGeoCandidatesStatsUseCase: GetHotelGeoCandidatesStatsUseCase,
+    private readonly listCanonicalHotelsWithoutGeoUseCase: ListCanonicalHotelsWithoutGeoUseCase,
     private readonly listUnmatchedCanonicalHotelsUseCase: ListUnmatchedCanonicalHotelsUseCase,
     private readonly listBeachProfilesUseCase: ListBeachProfilesUseCase,
     private readonly listHotelGeoCandidatesUseCase: ListHotelGeoCandidatesUseCase,
@@ -61,6 +65,13 @@ export class GeoDataController {
     @Query() query: IListUnmatchedCanonicalHotelsQuery,
   ): Promise<IListUnmatchedCanonicalHotelsResult> {
     return this.listUnmatchedCanonicalHotelsUseCase.execute(query);
+  }
+
+  @Get('canonical-hotels/without-geo')
+  async listCanonicalHotelsWithoutGeo(
+    @Query() query: IListCanonicalHotelsWithoutGeoQuery,
+  ): Promise<IListCanonicalHotelsWithoutGeoResult> {
+    return this.listCanonicalHotelsWithoutGeoUseCase.execute(query);
   }
 
   @Get('beaches')

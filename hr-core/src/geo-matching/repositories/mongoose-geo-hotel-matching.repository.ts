@@ -8,7 +8,9 @@ import { HOTEL_GEO_CANDIDATE_MATCH_STATUS } from '../../hotel-geo-candidates/con
 import { HOTEL_GEO_CANDIDATE_MODEL_NAME } from '../../hotel-geo-candidates/constants/hotel-geo-candidate-model-name.constant';
 import { IHotelGeoCandidate } from '../../hotel-geo-candidates/types/hotel-geo-candidate.interface';
 import { GEO_MATCH_ACTION } from '../constants/geo-match-action.enum';
+import { MANUAL_CANONICAL_HOTEL_GEO_SOURCE } from '../constants/manual-canonical-hotel-geo-source.constant';
 import { IApplyGeoHotelMatchParams } from '../types/apply-geo-hotel-match-params.interface';
+import { IApplyManualCanonicalHotelGeoParams } from '../types/apply-manual-canonical-hotel-geo-params.interface';
 import { IApplyManualGeoHotelMatchParams } from '../types/apply-manual-geo-hotel-match-params.interface';
 import { GeoHotelMatchingRepository } from './geo-hotel-matching.repository';
 
@@ -183,6 +185,40 @@ export class MongooseGeoHotelMatchingRepository extends GeoHotelMatchingReposito
       .exec();
 
     return GEO_MATCH_ACTION.AUTO_MATCHED;
+  }
+
+  async applyManualCanonicalHotelGeo(
+    params: IApplyManualCanonicalHotelGeoParams,
+  ): Promise<GEO_MATCH_ACTION> {
+    const now = new Date();
+    const result = await this.canonicalHotelModel
+      .updateOne(
+        {
+          _id: params.canonicalHotelId,
+          $or: [
+            {
+              'geo.source': null,
+            },
+            {
+              'geo.source': MANUAL_CANONICAL_HOTEL_GEO_SOURCE,
+            },
+          ],
+        },
+        {
+          $set: {
+            geo: {
+              point: params.point,
+              source: MANUAL_CANONICAL_HOTEL_GEO_SOURCE,
+            },
+            updatedAt: now,
+          },
+        },
+      )
+      .exec();
+
+    return result.matchedCount === 0
+      ? GEO_MATCH_ACTION.CONFLICT
+      : GEO_MATCH_ACTION.MANUAL_GEO_SET;
   }
 
   async applyManualMatch(

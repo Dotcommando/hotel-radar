@@ -556,7 +556,7 @@
             "method": "GET",
             "header": [],
             "url": {
-              "raw": "{{hrCoreBaseUrl}}/geo-data/hotel-candidates/nearby-unmatched?lat=35.1695948&lng=33.3632663&radiusMeters=1000&limit=50",
+              "raw": "{{hrCoreBaseUrl}}/geo-data/hotel-candidates/nearby-unmatched?lat=35.1594509&lng=33.3597095&radiusMeters=100&limit=50",
               "host": [
                 "{{hrCoreBaseUrl}}"
               ],
@@ -568,15 +568,15 @@
               "query": [
                 {
                   "key": "lat",
-                  "value": "35.1695948"
+                  "value": "35.1594509"
                 },
                 {
                   "key": "lng",
-                  "value": "33.3632663"
+                  "value": "33.3597095"
                 },
                 {
                   "key": "radiusMeters",
-                  "value": "1000"
+                  "value": "100"
                 },
                 {
                   "key": "limit",
@@ -632,6 +632,46 @@
                 "geo-data",
                 "canonical-hotels",
                 "without-geo-candidates"
+              ],
+              "query": [
+                {
+                  "key": "includeSuggestions",
+                  "value": "true"
+                },
+                {
+                  "key": "limit",
+                  "value": "50"
+                },
+                {
+                  "key": "offset",
+                  "value": "0"
+                },
+                {
+                  "key": "suggestionLimit",
+                  "value": "5"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Data. Canonical hotels without geo",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{hrCoreBaseUrl}}/geo-data/canonical-hotels/without-geo?includeSuggestions=true&limit=50&offset=0&suggestionLimit=5",
+              "host": [
+                "{{hrCoreBaseUrl}}"
+              ],
+              "path": [
+                "geo-data",
+                "canonical-hotels",
+                "without-geo"
               ],
               "query": [
                 {
@@ -784,6 +824,43 @@
                 "geo-data",
                 "beaches",
                 "{{beachProfileId}}"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Matching. Set manual canonical hotel geo",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{hrCoreBaseUrl}}/geo-matching/canonical-hotels/geo/manual?canonicalHotelId={{canonicalHotelId}}&lat=35.1696808&lng=33.3634435",
+              "host": [
+                "{{hrCoreBaseUrl}}"
+              ],
+              "path": [
+                "geo-matching",
+                "canonical-hotels",
+                "geo",
+                "manual"
+              ],
+              "query": [
+                {
+                  "key": "canonicalHotelId",
+                  "value": "{{canonicalHotelId}}"
+                },
+                {
+                  "key": "lat",
+                  "value": "35.1696808"
+                },
+                {
+                  "key": "lng",
+                  "value": "33.3634435"
+                }
               ]
             }
           },

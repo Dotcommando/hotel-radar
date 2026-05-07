@@ -5,7 +5,7 @@ import { InvalidNearbyHotelGeoCandidatesQueryError } from '../errors/invalid-nea
 import { IListNearbyUnmatchedHotelGeoCandidatesQuery } from '../types/list-nearby-unmatched-hotel-geo-candidates-query.interface';
 import { IListNearbyUnmatchedHotelGeoCandidatesResult } from '../types/list-nearby-unmatched-hotel-geo-candidates-result.interface';
 
-const DEFAULT_RADIUS_METERS = 1000;
+const DEFAULT_RADIUS_METERS = 100;
 const MAX_RADIUS_METERS = 10000;
 const DEFAULT_LIMIT = 50;
 const MAX_LIMIT = 200;

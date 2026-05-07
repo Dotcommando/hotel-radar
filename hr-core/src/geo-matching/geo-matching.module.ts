@@ -10,8 +10,10 @@ import { GeoMatchingController } from './geo-matching.controller';
 import { GeoHotelMatchingRepository } from './repositories/geo-hotel-matching.repository';
 import { MongooseGeoHotelMatchingRepository } from './repositories/mongoose-geo-hotel-matching.repository';
 import { AutoMatchHotelGeoCandidatesUseCase } from './use-cases/auto-match-hotel-geo-candidates.use-case';
+import { ListCanonicalHotelsWithoutGeoUseCase } from './use-cases/list-canonical-hotels-without-geo.use-case';
 import { ListUnmatchedCanonicalHotelsUseCase } from './use-cases/list-unmatched-canonical-hotels.use-case';
 import { ManualMatchHotelGeoCandidateUseCase } from './use-cases/manual-match-hotel-geo-candidate.use-case';
+import { SetManualCanonicalHotelGeoUseCase } from './use-cases/set-manual-canonical-hotel-geo.use-case';
 
 @Module({
   controllers: [GeoMatchingController],
@@ -31,8 +33,10 @@ import { ManualMatchHotelGeoCandidateUseCase } from './use-cases/manual-match-ho
   ],
   providers: [
     AutoMatchHotelGeoCandidatesUseCase,
+    ListCanonicalHotelsWithoutGeoUseCase,
     ListUnmatchedCanonicalHotelsUseCase,
     ManualMatchHotelGeoCandidateUseCase,
+    SetManualCanonicalHotelGeoUseCase,
     {
       provide: GeoHotelMatchingRepository,
       useClass: MongooseGeoHotelMatchingRepository,
@@ -40,8 +44,10 @@ import { ManualMatchHotelGeoCandidateUseCase } from './use-cases/manual-match-ho
   ],
   exports: [
     AutoMatchHotelGeoCandidatesUseCase,
+    ListCanonicalHotelsWithoutGeoUseCase,
     ListUnmatchedCanonicalHotelsUseCase,
     ManualMatchHotelGeoCandidateUseCase,
+    SetManualCanonicalHotelGeoUseCase,
   ],
 })
 export class GeoMatchingModule {}

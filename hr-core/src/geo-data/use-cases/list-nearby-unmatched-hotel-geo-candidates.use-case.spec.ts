@@ -77,7 +77,7 @@ describe('ListNearbyUnmatchedHotelGeoCandidatesUseCase', () => {
       lat: 35.1695948,
       limit: 50,
       lng: 33.3632663,
-      radiusMeters: 1000,
+      radiusMeters: 100,
     });
   });
 });
