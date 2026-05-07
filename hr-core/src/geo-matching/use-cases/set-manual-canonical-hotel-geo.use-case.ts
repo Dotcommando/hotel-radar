@@ -1,6 +1,8 @@
 import { Injectable } from '@nestjs/common';
 import { Types } from 'mongoose';
+import type { IGeoPoint } from '../../canonical-hotels/types/hotel-geo.interface';
 import { GEO_MATCH_ACTION } from '../constants/geo-match-action.enum';
+import { MANUAL_CANONICAL_HOTEL_COORDS_REGEXP } from '../constants/manual-canonical-hotel-coords-regexp.constant';
 import { MANUAL_CANONICAL_HOTEL_GEO_SOURCE } from '../constants/manual-canonical-hotel-geo-source.constant';
 import { CanonicalHotelForGeoMatchNotFoundError } from '../errors/canonical-hotel-for-geo-match-not-found.error';
 import { GeoHotelManualGeoConflictError } from '../errors/geo-hotel-manual-geo-conflict.error';
@@ -21,11 +23,10 @@ export class SetManualCanonicalHotelGeoUseCase {
       query.canonicalHotelId,
       'canonicalHotelId',
     );
-    const lat = this.parseCoordinate(query.lat, 'lat', -90, 90);
-    const lng = this.parseCoordinate(query.lng, 'lng', -180, 180);
-    const point = {
-      coordinates: [lng, lat] as [number, number],
-      type: 'Point' as const,
+    const { lat, lng } = this.parseCoords(query.coords);
+    const point: IGeoPoint = {
+      coordinates: [lng, lat],
+      type: 'Point',
     };
     const canonicalHotel =
       await this.repository.findCanonicalHotelForGeoMatchingById(
@@ -80,22 +81,34 @@ export class SetManualCanonicalHotelGeoUseCase {
     return new Types.ObjectId(normalized);
   }
 
-  private parseCoordinate(
-    value: string | undefined,
-    field: string,
-    min: number,
-    max: number,
-  ): number {
+  private parseCoords(value: string | undefined): {
+    lat: number;
+    lng: number;
+  } {
     if (value === undefined || value.trim().length === 0) {
-      throw new GeoHotelManualGeoInvalidQueryError(field);
+      throw new GeoHotelManualGeoInvalidQueryError('coords');
     }
 
-    const parsed = Number.parseFloat(value);
+    const match = MANUAL_CANONICAL_HOTEL_COORDS_REGEXP.exec(value);
 
-    if (!Number.isFinite(parsed) || parsed < min || parsed > max) {
-      throw new GeoHotelManualGeoInvalidQueryError(field);
+    if (match === null) {
+      throw new GeoHotelManualGeoInvalidQueryError('coords');
     }
 
-    return parsed;
+    const lat = Number(match[1]);
+    const lng = Number(match[2]);
+
+    if (
+      !Number.isFinite(lat) ||
+      !Number.isFinite(lng) ||
+      lat < -90 ||
+      lat > 90 ||
+      lng < -180 ||
+      lng > 180
+    ) {
+      throw new GeoHotelManualGeoInvalidQueryError('coords');
+    }
+
+    return { lat, lng };
   }
 }

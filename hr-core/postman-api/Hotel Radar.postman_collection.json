@@ -838,7 +838,7 @@
             "method": "POST",
             "header": [],
             "url": {
-              "raw": "{{hrCoreBaseUrl}}/geo-matching/canonical-hotels/geo/manual?canonicalHotelId={{canonicalHotelId}}&lat=35.1696808&lng=33.3634435",
+              "raw": "{{hrCoreBaseUrl}}/geo-matching/canonical-hotels/geo/manual?canonicalHotelId={{canonicalHotelId}}&coords=35.1696808, 33.3634435",
               "host": [
                 "{{hrCoreBaseUrl}}"
               ],
@@ -854,12 +854,8 @@
                   "value": "{{canonicalHotelId}}"
                 },
                 {
-                  "key": "lat",
-                  "value": "35.1696808"
-                },
-                {
-                  "key": "lng",
-                  "value": "33.3634435"
+                  "key": "coords",
+                  "value": "35.1696808, 33.3634435"
                 }
               ]
             }

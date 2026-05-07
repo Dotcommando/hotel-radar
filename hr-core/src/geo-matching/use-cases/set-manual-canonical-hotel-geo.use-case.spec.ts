@@ -3,10 +3,6 @@ import { CANONICAL_HOTEL_CAPACITY_MODE } from '../../canonical-hotel-candidates/
 import { CANONICAL_HOTEL_KIND } from '../../canonical-hotel-candidates/constants/canonical-hotel-kind.enum';
 import { CANONICAL_HOTEL_STATUS } from '../../canonical-hotels/constants/canonical-hotel-status.enum';
 import { ICanonicalHotel } from '../../canonical-hotels/types/canonical-hotel.interface';
-import { GEO_SOURCE_DATASET } from '../../geo-import-runs/constants/geo-source-dataset.enum';
-import { GEO_SOURCE_TYPE } from '../../geo-import-runs/constants/geo-source-type.enum';
-import { HOTEL_GEO_CANDIDATE_LIFECYCLE_STATUS } from '../../hotel-geo-candidates/constants/hotel-geo-candidate-lifecycle-status.enum';
-import { HOTEL_GEO_CANDIDATE_MATCH_STATUS } from '../../hotel-geo-candidates/constants/hotel-geo-candidate-match-status.enum';
 import { IHotelGeoCandidate } from '../../hotel-geo-candidates/types/hotel-geo-candidate.interface';
 import { GEO_MATCH_ACTION } from '../constants/geo-match-action.enum';
 import { MANUAL_CANONICAL_HOTEL_GEO_SOURCE } from '../constants/manual-canonical-hotel-geo-source.constant';
@@ -21,7 +17,7 @@ import { IApplyManualGeoHotelMatchParams } from '../types/apply-manual-geo-hotel
 import { SetManualCanonicalHotelGeoUseCase } from './set-manual-canonical-hotel-geo.use-case';
 
 describe('SetManualCanonicalHotelGeoUseCase', () => {
-  it('sets manual canonical hotel geo from Google lat/lng coordinates', async () => {
+  it('sets manual canonical hotel geo from Google copied coordinates', async () => {
     const hotel = buildCanonicalHotelFixture({
       canonicalName: 'GATE TWENTY TWO BOUTIQUE',
     });
@@ -30,8 +26,7 @@ describe('SetManualCanonicalHotelGeoUseCase', () => {
 
     const result = await useCase.execute({
       canonicalHotelId: hotel._id.toString(),
-      lat: '35.1696808',
-      lng: '33.3634435',
+      coords: '35.1696808, 33.3634435',
     });
 
     expect(result).toEqual({
@@ -58,6 +53,33 @@ describe('SetManualCanonicalHotelGeoUseCase', () => {
     ]);
   });
 
+  it('sets manual canonical hotel geo when copied coordinates have no space after comma', async () => {
+    const hotel = buildCanonicalHotelFixture({
+      canonicalName: 'GATE TWENTY TWO BOUTIQUE',
+    });
+    const repository = new InMemoryGeoHotelMatchingRepository([hotel], []);
+    const useCase = new SetManualCanonicalHotelGeoUseCase(repository);
+
+    const result = await useCase.execute({
+      canonicalHotelId: hotel._id.toString(),
+      coords: '34.98660055712087,33.98687880366772',
+    });
+
+    expect(result.geo.point).toEqual({
+      coordinates: [33.98687880366772, 34.98660055712087],
+      type: 'Point',
+    });
+    expect(repository.appliedManualCanonicalHotelGeo).toEqual([
+      {
+        canonicalHotelId: hotel._id,
+        point: {
+          coordinates: [33.98687880366772, 34.98660055712087],
+          type: 'Point',
+        },
+      },
+    ]);
+  });
+
   it('rejects invalid object ids before applying geo', async () => {
     const repository = new InMemoryGeoHotelMatchingRepository([], []);
     const useCase = new SetManualCanonicalHotelGeoUseCase(repository);
@@ -65,8 +87,7 @@ describe('SetManualCanonicalHotelGeoUseCase', () => {
     await expect(
       useCase.execute({
         canonicalHotelId: 'not-an-id',
-        lat: '35.1696808',
-        lng: '33.3634435',
+        coords: '35.1696808, 33.3634435',
       }),
     ).rejects.toBeInstanceOf(GeoHotelMatchInvalidIdError);
     expect(repository.appliedManualCanonicalHotelGeo).toHaveLength(0);
@@ -80,10 +101,25 @@ describe('SetManualCanonicalHotelGeoUseCase', () => {
     await expect(
       useCase.execute({
         canonicalHotelId: hotel._id.toString(),
-        lat: '95',
-        lng: '33.3634435',
+        coords: '95, 33.3634435',
       }),
     ).rejects.toBeInstanceOf(GeoHotelManualGeoInvalidQueryError);
+    expect(repository.appliedManualCanonicalHotelGeo).toHaveLength(0);
+  });
+
+  it('rejects old lat and lng query parameters before applying geo', async () => {
+    const hotel = buildCanonicalHotelFixture();
+    const repository = new InMemoryGeoHotelMatchingRepository([hotel], []);
+    const useCase = new SetManualCanonicalHotelGeoUseCase(repository);
+    const legacyQuery = {
+      canonicalHotelId: hotel._id.toString(),
+      lat: '35.1696808',
+      lng: '33.3634435',
+    };
+
+    await expect(useCase.execute(legacyQuery)).rejects.toBeInstanceOf(
+      GeoHotelManualGeoInvalidQueryError,
+    );
     expect(repository.appliedManualCanonicalHotelGeo).toHaveLength(0);
   });
 
@@ -94,8 +130,7 @@ describe('SetManualCanonicalHotelGeoUseCase', () => {
     await expect(
       useCase.execute({
         canonicalHotelId: new Types.ObjectId().toString(),
-        lat: '35.1696808',
-        lng: '33.3634435',
+        coords: '35.1696808, 33.3634435',
       }),
     ).rejects.toBeInstanceOf(CanonicalHotelForGeoMatchNotFoundError);
   });
@@ -112,8 +147,7 @@ describe('SetManualCanonicalHotelGeoUseCase', () => {
     await expect(
       useCase.execute({
         canonicalHotelId: hotel._id.toString(),
-        lat: '35.1696808',
-        lng: '33.3634435',
+        coords: '35.1696808, 33.3634435',
       }),
     ).rejects.toBeInstanceOf(GeoHotelManualGeoConflictError);
   });
@@ -121,7 +155,8 @@ describe('SetManualCanonicalHotelGeoUseCase', () => {
 
 class InMemoryGeoHotelMatchingRepository extends GeoHotelMatchingRepository {
   readonly appliedMatches: IApplyGeoHotelMatchParams[] = [];
-  readonly appliedManualCanonicalHotelGeo: IApplyManualCanonicalHotelGeoParams[] = [];
+  readonly appliedManualCanonicalHotelGeo: IApplyManualCanonicalHotelGeoParams[] =
+    [];
   readonly appliedManualMatches: IApplyManualGeoHotelMatchParams[] = [];
 
   constructor(
@@ -132,52 +167,54 @@ class InMemoryGeoHotelMatchingRepository extends GeoHotelMatchingRepository {
     super();
   }
 
-  async findCanonicalHotelForGeoMatchingById(
+  findCanonicalHotelForGeoMatchingById(
     id: Types.ObjectId,
   ): Promise<ICanonicalHotel | null> {
-    return this.hotels.find((hotel) => hotel._id.equals(id)) ?? null;
+    return Promise.resolve(
+      this.hotels.find((hotel) => hotel._id.equals(id)) ?? null,
+    );
   }
 
-  async findHotelGeoCandidateForGeoMatchingById(
+  findHotelGeoCandidateForGeoMatchingById(
     id: Types.ObjectId,
   ): Promise<IHotelGeoCandidate | null> {
-    return this.candidates.find((candidate) => candidate._id.equals(id)) ?? null;
+    return Promise.resolve(
+      this.candidates.find((candidate) => candidate._id.equals(id)) ?? null,
+    );
   }
 
-  async listCanonicalHotelIdsWithMergedGeoCandidates(): Promise<string[]> {
-    return [];
+  listCanonicalHotelIdsWithMergedGeoCandidates(): Promise<string[]> {
+    return Promise.resolve([]);
   }
 
-  async listCanonicalHotelsForGeoMatching(): Promise<ICanonicalHotel[]> {
-    return this.hotels;
+  listCanonicalHotelsForGeoMatching(): Promise<ICanonicalHotel[]> {
+    return Promise.resolve(this.hotels);
   }
 
-  async listHotelGeoCandidatesForAutoMatching(): Promise<IHotelGeoCandidate[]> {
-    return this.candidates;
+  listHotelGeoCandidatesForAutoMatching(): Promise<IHotelGeoCandidate[]> {
+    return Promise.resolve(this.candidates);
   }
 
-  async applyAutoMatch(
-    params: IApplyGeoHotelMatchParams,
-  ): Promise<GEO_MATCH_ACTION> {
+  applyAutoMatch(params: IApplyGeoHotelMatchParams): Promise<GEO_MATCH_ACTION> {
     this.appliedMatches.push(params);
 
-    return GEO_MATCH_ACTION.AUTO_MATCHED;
+    return Promise.resolve(GEO_MATCH_ACTION.AUTO_MATCHED);
   }
 
-  async applyManualCanonicalHotelGeo(
+  applyManualCanonicalHotelGeo(
     params: IApplyManualCanonicalHotelGeoParams,
   ): Promise<GEO_MATCH_ACTION> {
     this.appliedManualCanonicalHotelGeo.push(params);
 
-    return this.manualGeoAction;
+    return Promise.resolve(this.manualGeoAction);
   }
 
-  async applyManualMatch(
+  applyManualMatch(
     params: IApplyManualGeoHotelMatchParams,
   ): Promise<GEO_MATCH_ACTION> {
     this.appliedManualMatches.push(params);
 
-    return GEO_MATCH_ACTION.MANUAL_MATCHED;
+    return Promise.resolve(GEO_MATCH_ACTION.MANUAL_MATCHED);
   }
 }
 

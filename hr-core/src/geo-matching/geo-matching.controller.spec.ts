@@ -28,10 +28,13 @@ describe('GeoMatchingController', () => {
 
   beforeEach(async () => {
     manualMatchHotelGeoCandidateUseCase = {
-      execute: jest.fn(),
+      execute: jest.fn<
+        Promise<IManualMatchHotelGeoCandidateResult>,
+        [unknown]
+      >(),
     };
     setManualCanonicalHotelGeoUseCase = {
-      execute: jest.fn(),
+      execute: jest.fn<Promise<ISetManualCanonicalHotelGeoResult>, [unknown]>(),
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -72,27 +75,24 @@ describe('GeoMatchingController', () => {
     await expect(
       controller.setManualCanonicalHotelGeo({
         canonicalHotelId,
-        lat: '35.1696808',
-        lng: '33.3634435',
+        coords: '35.1696808, 33.3634435',
       }),
     ).resolves.toEqual(resultFixture);
     expect(setManualCanonicalHotelGeoUseCase.execute).toHaveBeenCalledWith({
       canonicalHotelId,
-      lat: '35.1696808',
-      lng: '33.3634435',
+      coords: '35.1696808, 33.3634435',
     });
   });
 
   it('maps invalid manual canonical hotel geo coordinates to bad request responses', async () => {
     setManualCanonicalHotelGeoUseCase.execute.mockRejectedValue(
-      new GeoHotelManualGeoInvalidQueryError('lat'),
+      new GeoHotelManualGeoInvalidQueryError('coords'),
     );
 
     await expect(
       controller.setManualCanonicalHotelGeo({
         canonicalHotelId: new Types.ObjectId().toString(),
-        lat: '95',
-        lng: '33.3634435',
+        coords: '95, 33.3634435',
       }),
     ).rejects.toBeInstanceOf(BadRequestException);
   });
@@ -105,8 +105,7 @@ describe('GeoMatchingController', () => {
     await expect(
       controller.setManualCanonicalHotelGeo({
         canonicalHotelId: new Types.ObjectId().toString(),
-        lat: '35.1696808',
-        lng: '33.3634435',
+        coords: '35.1696808, 33.3634435',
       }),
     ).rejects.toBeInstanceOf(ConflictException);
   });
@@ -124,7 +123,9 @@ describe('GeoMatchingController', () => {
       ok: true,
     };
 
-    manualMatchHotelGeoCandidateUseCase.execute.mockResolvedValue(resultFixture);
+    manualMatchHotelGeoCandidateUseCase.execute.mockResolvedValue(
+      resultFixture,
+    );
 
     await expect(
       controller.manualMatchHotelCandidateById({
@@ -153,7 +154,9 @@ describe('GeoMatchingController', () => {
 
   it('maps missing canonical hotels for manual match to not found responses', async () => {
     manualMatchHotelGeoCandidateUseCase.execute.mockRejectedValue(
-      new CanonicalHotelForGeoMatchNotFoundError(new Types.ObjectId().toString()),
+      new CanonicalHotelForGeoMatchNotFoundError(
+        new Types.ObjectId().toString(),
+      ),
     );
 
     await expect(
