@@ -66,6 +66,16 @@ In this mode:
 - `MONGODB_BACKUP_HOST`
 - `MONGODB_BACKUP_PORT`
 - `HR_CORE_ACTIVE_SLOT`
+- `VALHALLA_IMAGE`
+- `VALHALLA_HOST_PORT`
+- `VALHALLA_BASE_URL`
+- `VALHALLA_DATA_DIRECTORY_PATH`
+- `VALHALLA_USE_TILES_IGNORE_PBF`
+- `VALHALLA_FORCE_REBUILD`
+- `VALHALLA_SERVE_TILES`
+- `VALHALLA_BUILD_ELEVATION`
+- `VALHALLA_BUILD_ADMINS`
+- `VALHALLA_BUILD_TIME_ZONES`
 - `APIFY_TOKEN`
 - `APIFY_ACTOR_ID`
 - `OPENAI_API_KEY`
@@ -98,6 +108,31 @@ MONGODB_BACKUP_PORT=27777
 ```
 
 If `MONGODB_BACKUP_DIRECTORY_PATH` is not set, the default is `/Users/alphared/Yandex.Disk.localized/Projects/hotel-radar/backups`. The directory is created automatically when it does not exist.
+
+## Valhalla
+
+Valhalla runs as `hr-valhalla` and uses the local data directory mounted at `/custom_files`:
+
+```env
+VALHALLA_DATA_DIRECTORY_PATH=./valhalla/custom_files
+VALHALLA_BASE_URL=http://hr-valhalla:8002
+```
+
+Both `hr-core-blue` and `hr-core-green` receive the same `VALHALLA_BASE_URL`, so application code should use that env var for internal routing requests.
+
+The local Cyprus OSM source file should be placed at:
+
+```text
+valhalla/custom_files/cyprus-latest.osm.pbf
+```
+
+Start Valhalla:
+
+```bash
+docker compose up -d hr-valhalla
+```
+
+The first start may take time because Valhalla builds routing tiles from the PBF. `valhalla/custom_files/` is ignored by git because it contains local source data and generated routing files.
 
 ## Slot Routing
 

@@ -11,6 +11,7 @@ x-hr-core-service: &hr-core-service
     BULLMQ_REDIS_PASSWORD: ${BULLMQ_REDIS_PASSWORD}
     BULLMQ_REDIS_DB: ${BULLMQ_REDIS_DB}
     MONGODB_URI: mongodb://${MONGO_INITDB_ROOT_USERNAME}:${MONGO_INITDB_ROOT_PASSWORD}@hr-mongodb:27017/${MONGO_INITDB_DATABASE}?authSource=admin
+    VALHALLA_BASE_URL: ${VALHALLA_BASE_URL}
   volumes:
     - ./hr-core:/opt/hr-core
   depends_on:
@@ -18,6 +19,8 @@ x-hr-core-service: &hr-core-service
       condition: service_healthy
     hr-bullmq-redis:
       condition: service_healthy
+    hr-valhalla:
+      condition: service_started
   healthcheck:
     test:
       - CMD-SHELL
@@ -110,6 +113,23 @@ services:
       - "${BULLMQ_REDIS_HOST_PORT}:6379"
     volumes:
       - hr-bullmq-redis-data:/data
+    networks:
+      - hr-network
+
+  hr-valhalla:
+    image: ${VALHALLA_IMAGE}
+    container_name: hr-valhalla
+    environment:
+      build_admins: ${VALHALLA_BUILD_ADMINS}
+      build_elevation: ${VALHALLA_BUILD_ELEVATION}
+      build_time_zones: ${VALHALLA_BUILD_TIME_ZONES}
+      force_rebuild: ${VALHALLA_FORCE_REBUILD}
+      serve_tiles: ${VALHALLA_SERVE_TILES}
+      use_tiles_ignore_pbf: ${VALHALLA_USE_TILES_IGNORE_PBF}
+    ports:
+      - "${VALHALLA_HOST_PORT}:8002"
+    volumes:
+      - ${VALHALLA_DATA_DIRECTORY_PATH}:/custom_files
     networks:
       - hr-network
 
