@@ -1,5 +1,9 @@
 import { Injectable } from '@nestjs/common';
 import { HOTEL_PROCESSING_STATUS } from '../../hotel-processing/constants/hotel-processing-status.enum';
+import {
+  IKnownPropertyComplexGroup,
+  KNOWN_PROPERTY_COMPLEX_GROUPS,
+} from '../../hotel-registry-entries/constants/known-property-complex-groups.constant';
 import { HOTEL_REGISTRY_ENTRY_STATUS } from '../../hotel-registry-entries/constants/hotel-registry-entry-status.enum';
 import { IHotelContacts } from '../../hotel-registry-entries/types/hotel-contacts.interface';
 import { IHotelLocation } from '../../hotel-registry-entries/types/hotel-location.interface';
@@ -45,6 +49,16 @@ export class CanonicalHotelCandidateBuilderService {
 
     if (this.isSafeSameNameMultiTypeGroup(entries)) {
       return this.buildSameNameMultiTypeCandidate(entries);
+    }
+
+    const knownPropertyComplexGroup =
+      this.findKnownPropertyComplexGroup(entries);
+
+    if (knownPropertyComplexGroup !== null) {
+      return this.buildKnownPropertyComplexCandidate(
+        entries,
+        knownPropertyComplexGroup,
+      );
     }
 
     if (this.isSafeSameNameSameTypeStrongIdentityCollapseGroup(entries)) {
@@ -363,6 +377,50 @@ export class CanonicalHotelCandidateBuilderService {
     };
   }
 
+  private buildKnownPropertyComplexCandidate(
+    entries: IHotelRegistryEntry[],
+    group: IKnownPropertyComplexGroup,
+  ): ICreateCanonicalHotelCandidate {
+    const sortedEntries = this.sortKnownPropertyComplexEntries(entries, group);
+    const bestLocationEntry = this.findBestLocationEntry(sortedEntries);
+
+    return {
+      build: {
+        issues: [],
+        rule: group.buildRule,
+        ruleVersion: 1,
+      },
+      candidateKey: this.buildKnownPropertyComplexCandidateKey(
+        sortedEntries,
+        group,
+      ),
+      canonicalName: group.canonicalName,
+      capacity: {
+        beds: this.sumNullableNumbers(
+          sortedEntries.map(({ capacity }) => capacity.beds),
+        ),
+        mode: CANONICAL_HOTEL_CAPACITY_MODE.SUM_COMPONENTS,
+        rooms: this.sumNullableNumbers(
+          sortedEntries.map(({ capacity }) => capacity.rooms),
+        ),
+      },
+      components: sortedEntries.map((entry) => this.buildComponent(entry)),
+      contacts: this.mergeContacts(sortedEntries),
+      kind: CANONICAL_HOTEL_KIND.PROPERTY_COMPLEX,
+      location: this.mergeLocation(bestLocationEntry, sortedEntries),
+      operator: this.findKnownPropertyComplexOperator(sortedEntries),
+      processing: {
+        canonicalHotelId: null,
+        claimedAt: null,
+        error: null,
+        processedAt: null,
+        runId: null,
+        status: HOTEL_PROCESSING_STATUS.PENDING,
+      },
+      status: CANONICAL_HOTEL_CANDIDATE_STATUS.READY,
+    };
+  }
+
   private isSafeNumericSuffixGroup(entries: IHotelRegistryEntry[]): boolean {
     if (entries.length < 2) {
       return false;
@@ -538,6 +596,38 @@ export class CanonicalHotelCandidateBuilderService {
       this.allEntriesHaveStrongIdentityDuplicateLocation(entries) &&
       this.allEntriesHaveCompatibleOperator(entries) &&
       this.hasExactCapacityForCollapse(entries)
+    );
+  }
+
+  private findKnownPropertyComplexGroup(
+    entries: IHotelRegistryEntry[],
+  ): IKnownPropertyComplexGroup | null {
+    return (
+      KNOWN_PROPERTY_COMPLEX_GROUPS.find((group) =>
+        this.isKnownPropertyComplexGroup(entries, group),
+      ) ?? null
+    );
+  }
+
+  private isKnownPropertyComplexGroup(
+    entries: IHotelRegistryEntry[],
+    group: IKnownPropertyComplexGroup,
+  ): boolean {
+    if (entries.length !== group.normalizedMemberNames.length) {
+      return false;
+    }
+
+    const entryNames = new Set(entries.map(({ name }) => name.normalized));
+
+    return (
+      group.normalizedMemberNames.every((name) => entryNames.has(name)) &&
+      entries.every(
+        (entry) =>
+          entry.status === HOTEL_REGISTRY_ENTRY_STATUS.READY &&
+          entry.issues.length === 0,
+      ) &&
+      this.allEntriesHaveMeaningfulContactOverlap(entries) &&
+      this.allEntriesHaveStrictCompatibleLocation(entries)
     );
   }
 
@@ -754,6 +844,23 @@ export class CanonicalHotelCandidateBuilderService {
     ].join('|');
   }
 
+  private buildKnownPropertyComplexCandidateKey(
+    entries: IHotelRegistryEntry[],
+    group: IKnownPropertyComplexGroup,
+  ): string {
+    const bestLocationEntry = this.findBestLocationEntry(entries);
+
+    return [
+      'ccv1',
+      'group',
+      group.buildRule,
+      group.canonicalName,
+      bestLocationEntry.location.postcode ?? '',
+      this.normalizeText(bestLocationEntry.location.address),
+      this.buildContactsKey(this.mergeContacts(entries)),
+    ].join('|');
+  }
+
   private mergeContacts(entries: IHotelRegistryEntry[]): IHotelContacts {
     return {
       domains: this.mergeStringArrays(
@@ -871,6 +978,20 @@ export class CanonicalHotelCandidateBuilderService {
       entries.find(({ operator }) => operator !== null)?.operator ??
       null
     );
+  }
+
+  private findKnownPropertyComplexOperator(
+    entries: IHotelRegistryEntry[],
+  ): string | null {
+    const operators = [
+      ...new Set(
+        entries
+          .map(({ operator }) => operator)
+          .filter((operator): operator is string => operator !== null),
+      ),
+    ];
+
+    return operators.length === 1 ? operators[0] : null;
   }
 
   private hasSameNonEmptyValue(
@@ -1225,6 +1346,26 @@ export class CanonicalHotelCandidateBuilderService {
 
       if (normalizedNameCompare !== 0) {
         return normalizedNameCompare;
+      }
+
+      return left.registryKey.localeCompare(right.registryKey);
+    });
+  }
+
+  private sortKnownPropertyComplexEntries(
+    entries: IHotelRegistryEntry[],
+    group: IKnownPropertyComplexGroup,
+  ): IHotelRegistryEntry[] {
+    return entries.slice().sort((left, right) => {
+      const leftIndex = group.normalizedMemberNames.indexOf(
+        left.name.normalized,
+      );
+      const rightIndex = group.normalizedMemberNames.indexOf(
+        right.name.normalized,
+      );
+
+      if (leftIndex !== rightIndex) {
+        return leftIndex - rightIndex;
       }
 
       return left.registryKey.localeCompare(right.registryKey);

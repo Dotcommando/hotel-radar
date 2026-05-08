@@ -1255,6 +1255,85 @@ describe('CanonicalHotelCandidateBuilderService', () => {
     expect(result.build.rule).toBe('same_name_multi_type_same_contacts');
   });
 
+  it('groups known EVELEOS A and B entries into a property complex', () => {
+    const firstEntry = buildRegistryEntry({
+      capacity: {
+        beds: 8,
+        rooms: 4,
+      },
+      contacts: {
+        domains: ['filokypros.com'],
+        emails: ['info@filokypros.com'],
+        phones: ['+35799520973'],
+        websites: ['https://www.filokypros.com/'],
+      },
+      establishmentType: 'TRADITIONAL HOUSES - APARTMENTS',
+      location: {
+        address: null,
+        district: 'LARNACA',
+        locality: 'Larnaca',
+        postcode: '7740',
+      },
+      name: {
+        baseName: 'EVELEOS COUNTRY HOUSE A',
+        normalized: 'EVELEOS COUNTRY HOUSE A',
+        original: 'EVELEOS COUNTRY HOUSE A',
+        suffix: null,
+      },
+      operator: 'Filokypros Character Houses Ltd',
+      registryKey:
+        'rkv1|EVELEOS COUNTRY HOUSE A|TRADITIONAL HOUSES APARTMENTS|LARNACA|LARNACA|7740|',
+    });
+    const secondEntry = buildRegistryEntry({
+      capacity: {
+        beds: 10,
+        rooms: 4,
+      },
+      contacts: {
+        domains: ['filokypros.com'],
+        emails: ['info@filokypros.com'],
+        phones: ['+35799520973'],
+        websites: ['https://www.filokypros.com/'],
+      },
+      establishmentType: 'TRADITIONAL HOUSES - APARTMENTS',
+      location: {
+        address: null,
+        district: 'LARNACA',
+        locality: 'Larnaca',
+        postcode: '7740',
+      },
+      name: {
+        baseName: 'EVELEOS COUNTRY HOUSE B',
+        normalized: 'EVELEOS COUNTRY HOUSE B',
+        original: 'EVELEOS COUNTRY HOUSE B',
+        suffix: null,
+      },
+      operator: 'Ev Agro Country House Ltd',
+      registryKey:
+        'rkv1|EVELEOS COUNTRY HOUSE B|TRADITIONAL HOUSES APARTMENTS|LARNACA|LARNACA|7740|',
+    });
+
+    const result = service.buildFromRegistryEntries([secondEntry, firstEntry]);
+
+    expect(result.kind).toBe(CANONICAL_HOTEL_KIND.PROPERTY_COMPLEX);
+    expect(result.canonicalName).toBe('EVELEOS COUNTRY HOUSE');
+    expect(result.build).toEqual({
+      issues: [],
+      rule: 'known_property_complex_group',
+      ruleVersion: 1,
+    });
+    expect(result.capacity).toEqual({
+      beds: 18,
+      mode: CANONICAL_HOTEL_CAPACITY_MODE.SUM_COMPONENTS,
+      rooms: 8,
+    });
+    expect(result.operator).toBeNull();
+    expect(result.components).toEqual([
+      buildExpectedComponent(firstEntry),
+      buildExpectedComponent(secondEntry),
+    ]);
+  });
+
   it('does not group same-name multi-type entries by shared chain website only', () => {
     const hotelEntry = buildRegistryEntry({
       contacts: {

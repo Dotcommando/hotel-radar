@@ -1,6 +1,10 @@
 import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
+import {
+  IKnownPropertyComplexGroup,
+  KNOWN_PROPERTY_COMPLEX_GROUPS,
+} from './constants/known-property-complex-groups.constant';
 import { HOTEL_PROCESSING_STATUS } from '../hotel-processing/constants/hotel-processing-status.enum';
 import { IRawHotel } from '../raw-hotels/types/raw-hotel.interface';
 import { normalizeHotelCapacity } from '../raw-hotels/utils/hotel-capacity-normalization.util';
@@ -385,6 +389,13 @@ export class HotelRegistryEntriesService {
       return numericSuffixArtifactGroup;
     }
 
+    const knownPropertyComplexGroup =
+      await this.readSafeKnownPropertyComplexGroup(entry);
+
+    if (knownPropertyComplexGroup.length > 1) {
+      return knownPropertyComplexGroup;
+    }
+
     const sameNameEntries = await this.hotelRegistryEntryModel
       .find({
         'name.normalized': entry.name.normalized,
@@ -404,15 +415,52 @@ export class HotelRegistryEntriesService {
 
     if (
       this.isSafeSameNameMultiTypeGroup(sameNameEntries) ||
-      this.isSafeSameNameSameTypeStrongIdentityCollapseGroup(
-        sameNameEntries,
-      ) ||
+      this.isSafeSameNameSameTypeStrongIdentityCollapseGroup(sameNameEntries) ||
       this.isSafeSameNameSameTypeCollapseGroup(sameNameEntries)
     ) {
       return sameNameEntries;
     }
 
     return [entry];
+  }
+
+  async readSafeKnownPropertyComplexGroup(
+    entry: IHotelRegistryEntry,
+  ): Promise<IHotelRegistryEntry[]> {
+    const group = this.findKnownPropertyComplexGroup(entry);
+
+    if (
+      group === null ||
+      entry.status !== HOTEL_REGISTRY_ENTRY_STATUS.READY ||
+      entry.issues.length > 0
+    ) {
+      return [entry];
+    }
+
+    const entries = await this.hotelRegistryEntryModel
+      .find({
+        'name.normalized': {
+          $in: group.normalizedMemberNames,
+        },
+        'processing.status': {
+          $in: [
+            HOTEL_PROCESSING_STATUS.PENDING,
+            HOTEL_PROCESSING_STATUS.CLAIMED,
+            HOTEL_PROCESSING_STATUS.PROCESSED,
+          ],
+        },
+        status: HOTEL_REGISTRY_ENTRY_STATUS.READY,
+      })
+      .sort({
+        'name.normalized': 1,
+      })
+      .exec();
+
+    if (!this.isSafeKnownPropertyComplexGroup(entries, group)) {
+      return [entry];
+    }
+
+    return this.sortKnownPropertyComplexEntries(entries, group);
   }
 
   async readShadowAggregateNumericSuffixGroup(
@@ -645,9 +693,8 @@ export class HotelRegistryEntriesService {
       phones: splitAndNormalizeRegistryPhones(rawHotel.contacts.phones),
       websites: normalizeRegistryWebsites(rawHotel.contacts.websites),
     };
-    const contactFilters = this.buildMeaningfulRegistryContactOverlapFilters(
-      rawContacts,
-    );
+    const contactFilters =
+      this.buildMeaningfulRegistryContactOverlapFilters(rawContacts);
 
     if (
       contactFilters.length === 0 ||
@@ -896,10 +943,7 @@ export class HotelRegistryEntriesService {
       (sum, value) => sum + value,
       0,
     );
-    const bedsSum = completeNumberedBeds.reduce(
-      (sum, value) => sum + value,
-      0,
-    );
+    const bedsSum = completeNumberedBeds.reduce((sum, value) => sum + value, 0);
 
     return (
       rooms > maxNumberedRooms &&
@@ -985,6 +1029,38 @@ export class HotelRegistryEntriesService {
       this.allEntriesHaveStrongIdentityDuplicateLocation(entries) &&
       this.allEntriesHaveCompatibleOperator(entries) &&
       this.hasExactCapacityForCollapse(entries)
+    );
+  }
+
+  private findKnownPropertyComplexGroup(
+    entry: IHotelRegistryEntry,
+  ): IKnownPropertyComplexGroup | null {
+    return (
+      KNOWN_PROPERTY_COMPLEX_GROUPS.find((group) =>
+        group.normalizedMemberNames.includes(entry.name.normalized),
+      ) ?? null
+    );
+  }
+
+  private isSafeKnownPropertyComplexGroup(
+    entries: IHotelRegistryEntry[],
+    group: IKnownPropertyComplexGroup,
+  ): boolean {
+    if (entries.length !== group.normalizedMemberNames.length) {
+      return false;
+    }
+
+    const entryNames = new Set(entries.map(({ name }) => name.normalized));
+
+    return (
+      group.normalizedMemberNames.every((name) => entryNames.has(name)) &&
+      entries.every(
+        (entry) =>
+          entry.status === HOTEL_REGISTRY_ENTRY_STATUS.READY &&
+          entry.issues.length === 0,
+      ) &&
+      this.allEntriesHaveMeaningfulContactOverlap(entries) &&
+      this.allEntriesHaveStrictCompatibleLocation(entries)
     );
   }
 
@@ -1084,10 +1160,7 @@ export class HotelRegistryEntriesService {
         left.location.postcode,
         right.location.postcode,
       ) ||
-      this.hasConflictingValue(
-        left.location.district,
-        right.location.district,
-      )
+      this.hasConflictingValue(left.location.district, right.location.district)
     ) {
       return false;
     }
@@ -1122,7 +1195,9 @@ export class HotelRegistryEntriesService {
 
     const district = left.location.district ?? right.location.district ?? null;
     const normalizedDistrict = normalizeRegistryText(district);
-    const normalizedLeftLocality = normalizeRegistryText(left.location.locality);
+    const normalizedLeftLocality = normalizeRegistryText(
+      left.location.locality,
+    );
     const normalizedRightLocality = normalizeRegistryText(
       right.location.locality,
     );
@@ -1512,6 +1587,26 @@ export class HotelRegistryEntriesService {
     });
   }
 
+  private sortKnownPropertyComplexEntries(
+    entries: IHotelRegistryEntry[],
+    group: IKnownPropertyComplexGroup,
+  ): IHotelRegistryEntry[] {
+    return entries.slice().sort((left, right) => {
+      const leftIndex = group.normalizedMemberNames.indexOf(
+        left.name.normalized,
+      );
+      const rightIndex = group.normalizedMemberNames.indexOf(
+        right.name.normalized,
+      );
+
+      if (leftIndex !== rightIndex) {
+        return leftIndex - rightIndex;
+      }
+
+      return left.registryKey.localeCompare(right.registryKey);
+    });
+  }
+
   private sortNumericSuffixArtifactEntries(
     entries: IHotelRegistryEntry[],
   ): IHotelRegistryEntry[] {
@@ -1605,7 +1700,10 @@ export class HotelRegistryEntriesService {
       }),
       establishmentType: rawHotel.establishmentType,
       issues,
-      location: this.mergeLocation(existingEntry?.location ?? null, rawLocation),
+      location: this.mergeLocation(
+        existingEntry?.location ?? null,
+        rawLocation,
+      ),
       name: {
         baseName: nameParts.baseName,
         normalized: nameNormalized,

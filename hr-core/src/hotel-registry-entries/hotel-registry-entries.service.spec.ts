@@ -197,6 +197,22 @@ describe('HotelRegistryEntriesService', () => {
     });
   }
 
+  function mockFindResultSequence(
+    registryEntriesList: IHotelRegistryEntry[][],
+  ): void {
+    for (const registryEntries of registryEntriesList) {
+      hotelRegistryEntryModel.find.mockReturnValueOnce({
+        sort: jest
+          .fn<IExecable<IHotelRegistryEntry[]>, [Record<string, 1 | -1>]>()
+          .mockReturnValue({
+            exec: jest
+              .fn<Promise<IHotelRegistryEntry[]>, []>()
+              .mockResolvedValue(registryEntries),
+          }),
+      });
+    }
+  }
+
   function buildRegistryEntry(
     overrides: Partial<IHotelRegistryEntry>,
   ): IHotelRegistryEntry {
@@ -548,8 +564,7 @@ describe('HotelRegistryEntriesService', () => {
     });
     expect(hotelRegistryEntryModel.updateOne).toHaveBeenCalledWith(
       {
-        registryKey:
-          'rkv1|JUBILEE|HOTELS|HILL RESORTS TROODOS|TROODOS|4800|',
+        registryKey: 'rkv1|JUBILEE|HOTELS|HILL RESORTS TROODOS|TROODOS|4800|',
       },
       expect.objectContaining({
         $set: expect.objectContaining({
@@ -565,8 +580,7 @@ describe('HotelRegistryEntriesService', () => {
             locality: 'Troodos',
             postcode: '4800',
           },
-          registryKey:
-            'rkv1|JUBILEE|HOTELS|HILL RESORTS TROODOS|TROODOS|4800|',
+          registryKey: 'rkv1|JUBILEE|HOTELS|HILL RESORTS TROODOS|TROODOS|4800|',
         }),
       }),
       {
@@ -1213,6 +1227,82 @@ describe('HotelRegistryEntriesService', () => {
     const result = await service.readSafeCanonicalCandidateGroup(limassolEntry);
 
     expect(result).toEqual([troodosEntry, limassolEntry]);
+  });
+
+  it('finds known EVELEOS property complex groups by member names', async () => {
+    const firstEntry = buildRegistryEntry({
+      capacity: {
+        beds: 8,
+        rooms: 4,
+      },
+      contacts: {
+        domains: ['filokypros.com'],
+        emails: ['info@filokypros.com'],
+        phones: ['+35799520973'],
+        websites: ['https://www.filokypros.com/'],
+      },
+      establishmentType: 'TRADITIONAL HOUSES - APARTMENTS',
+      location: {
+        address: null,
+        district: 'LARNACA',
+        locality: 'Larnaca',
+        postcode: '7740',
+      },
+      name: {
+        baseName: 'EVELEOS COUNTRY HOUSE A',
+        normalized: 'EVELEOS COUNTRY HOUSE A',
+        original: 'EVELEOS COUNTRY HOUSE A',
+        suffix: null,
+      },
+      operator: 'Filokypros Character Houses Ltd',
+      registryKey: 'eveleos-a',
+    });
+    const secondEntry = buildRegistryEntry({
+      capacity: {
+        beds: 10,
+        rooms: 4,
+      },
+      contacts: {
+        domains: ['filokypros.com'],
+        emails: ['info@filokypros.com'],
+        phones: ['+35799520973'],
+        websites: ['https://www.filokypros.com/'],
+      },
+      establishmentType: 'TRADITIONAL HOUSES - APARTMENTS',
+      location: {
+        address: null,
+        district: 'LARNACA',
+        locality: 'Larnaca',
+        postcode: '7740',
+      },
+      name: {
+        baseName: 'EVELEOS COUNTRY HOUSE B',
+        normalized: 'EVELEOS COUNTRY HOUSE B',
+        original: 'EVELEOS COUNTRY HOUSE B',
+        suffix: null,
+      },
+      operator: 'Ev Agro Country House Ltd',
+      registryKey: 'eveleos-b',
+    });
+
+    mockFindResultSequence([[firstEntry], [firstEntry, secondEntry]]);
+
+    const result = await service.readSafeCanonicalCandidateGroup(secondEntry);
+
+    expect(result).toEqual([firstEntry, secondEntry]);
+    expect(hotelRegistryEntryModel.find).toHaveBeenCalledWith({
+      'name.normalized': {
+        $in: ['EVELEOS COUNTRY HOUSE A', 'EVELEOS COUNTRY HOUSE B'],
+      },
+      'processing.status': {
+        $in: [
+          HOTEL_PROCESSING_STATUS.PENDING,
+          HOTEL_PROCESSING_STATUS.CLAIMED,
+          HOTEL_PROCESSING_STATUS.PROCESSED,
+        ],
+      },
+      status: HOTEL_REGISTRY_ENTRY_STATUS.READY,
+    });
   });
 
   it('keeps raw hotel fields when input is a Mongoose document', async () => {
