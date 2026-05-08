@@ -21,6 +21,7 @@ kind
 canonicalName
 location
 geo
+verification
 operator
 contacts
 webPresence
@@ -53,6 +54,26 @@ Non-active statuses must not be silently reactivated by Stage 4. When an incomin
 Product-facing reads, geo matching, geo worklists, auto matching, and manual geo endpoints should treat only `ACTIVE` canonical hotels as eligible unless a workflow explicitly exists for reviewing or restoring non-active hotels.
 
 Deleting a closed or duplicate canonical hotel is usually wrong: the next ingestion run can recreate it from the source registry. Prefer marking `status` as `PERMANENTLY_CLOSED` or `DUPLICATE`.
+
+## Verification Semantics
+
+`canonical_hotels.verification` records the current verification state of accepted hotel facts, especially location and geo confidence. It is not a lifecycle control field.
+
+`status` answers whether the canonical hotel document itself is active, closed, or a duplicate. `verification.status` answers whether the accepted hotel location has been reviewed or remains unresolved. Do not use `verification.status` to close, duplicate, hide, or restore a canonical hotel; use `canonical_hotels.status` for lifecycle decisions.
+
+Current verification statuses:
+
+- `UNREVIEWED`: location verification has not been reviewed yet.
+- `LOCATION_VERIFIED`: the hotel location has been confirmed by manual geo assignment or confirmed matching.
+- `LOCATION_UNVERIFIED`: the hotel location cannot currently be confirmed. Geo matching and geo worklists should not treat this hotel as eligible until verification changes.
+
+Current verification issues:
+
+- `GOOGLE_MAPS_NOT_FOUND`: Google Maps did not find a usable hotel match.
+- `EMAIL_NO_RESPONSE`: email verification was attempted but did not receive a response.
+- `NO_EMAIL_FOR_VERIFICATION`: no email is available for verification.
+
+`verification.updatedAt` should be set when verification changes and remain `null` for the default `UNREVIEWED` state.
 
 ## Applying Candidates
 
