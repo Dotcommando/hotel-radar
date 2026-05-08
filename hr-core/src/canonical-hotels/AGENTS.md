@@ -53,6 +53,8 @@ Non-active statuses must not be silently reactivated by Stage 4. When an incomin
 
 Product-facing reads, geo matching, geo worklists, auto matching, and manual geo endpoints should treat only `ACTIVE` canonical hotels as eligible unless a workflow explicitly exists for reviewing or restoring non-active hotels.
 
+Hotel beach access computation may read `ACTIVE` canonical hotels with `geo.point`, but it must not write hotel facts or beach access results into `canonical_hotels`.
+
 Deleting a closed or duplicate canonical hotel is usually wrong: the next ingestion run can recreate it from the source registry. Prefer marking `status` as `PERMANENTLY_CLOSED` or `DUPLICATE`.
 
 ## Verification Semantics

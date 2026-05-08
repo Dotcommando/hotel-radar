@@ -1,6 +1,8 @@
 import { Schema } from 'mongoose';
 import { GEO_SOURCE_DATASET } from '../../geo-import-runs/constants/geo-source-dataset.enum';
 import { GEO_SOURCE_TYPE } from '../../geo-import-runs/constants/geo-source-type.enum';
+import { BEACH_ACCESS_POINT_CONFIDENCE } from '../constants/beach-access-point-confidence.enum';
+import { BEACH_ACCESS_POINT_SOURCE } from '../constants/beach-access-point-source.enum';
 import { BEACH_GEOMETRY_KIND } from '../constants/beach-geometry-kind.enum';
 import { BEACH_PROFILE_LIFECYCLE_STATUS } from '../constants/beach-profile-lifecycle-status.enum';
 import { BEACH_PROFILES_COLLECTION_NAME } from '../constants/beach-profiles-collection-name.constant';
@@ -45,6 +47,41 @@ const pointSchema = new Schema(
       enum: ['Point'],
       required: true,
       type: String,
+    },
+  },
+  {
+    _id: false,
+  },
+);
+
+const accessPointSchema = new Schema(
+  {
+    confidence: {
+      enum: Object.values(BEACH_ACCESS_POINT_CONFIDENCE),
+      required: true,
+      type: String,
+    },
+    createdAt: {
+      required: true,
+      type: Date,
+    },
+    label: {
+      default: null,
+      required: false,
+      type: String,
+    },
+    point: {
+      required: true,
+      type: pointSchema,
+    },
+    source: {
+      enum: Object.values(BEACH_ACCESS_POINT_SOURCE),
+      required: true,
+      type: String,
+    },
+    updatedAt: {
+      required: true,
+      type: Date,
     },
   },
   {
@@ -135,6 +172,11 @@ const lifecycleSchema = new Schema(
 
 export const beachProfileSchema = new Schema<IBeachProfile>(
   {
+    accessPoints: {
+      default: [],
+      required: true,
+      type: [accessPointSchema],
+    },
     beachType: {
       enum: Object.values(BEACH_TYPE),
       required: true,

@@ -31,6 +31,9 @@ interface ICanonicalHotelQuery<TValue> {
 }
 
 interface ICanonicalHotelModel {
+  countDocuments: (
+    filter: ICanonicalHotelFindFilter,
+  ) => ICanonicalHotelQuery<number>;
   create: (document: ICanonicalHotel) => Promise<ICanonicalHotel>;
   find: (
     filter: ICanonicalHotelFindFilter,
@@ -49,8 +52,10 @@ interface ICanonicalHotelModel {
 
 interface ICanonicalHotelFindFilter {
   canonicalName?: string;
+  status?: CANONICAL_HOTEL_STATUS;
   kind?: string;
   operator?: string | null;
+  'geo.point'?: { $ne: null } | null;
   'location.address'?: string | null;
   'location.locality'?: string | null;
   'location.postcode'?: string | null;
@@ -72,6 +77,37 @@ export class CanonicalHotelsService {
     }
 
     return this.canonicalHotelModel.findById(new Types.ObjectId(id)).exec();
+  }
+
+  async countActiveWithGeo(): Promise<number> {
+    return this.canonicalHotelModel
+      .countDocuments({
+        'geo.point': {
+          $ne: null,
+        },
+        status: CANONICAL_HOTEL_STATUS.ACTIVE,
+      })
+      .exec();
+  }
+
+  async countActiveWithoutGeo(): Promise<number> {
+    return this.canonicalHotelModel
+      .countDocuments({
+        'geo.point': null,
+        status: CANONICAL_HOTEL_STATUS.ACTIVE,
+      })
+      .exec();
+  }
+
+  async listActiveWithGeo(): Promise<ICanonicalHotel[]> {
+    return this.canonicalHotelModel
+      .find({
+        'geo.point': {
+          $ne: null,
+        },
+        status: CANONICAL_HOTEL_STATUS.ACTIVE,
+      })
+      .exec();
   }
 
   async findUniqueByCanonicalName(

@@ -6,6 +6,7 @@ import { CanonicalHotelsModule } from './canonical-hotels/canonical-hotels.modul
 import { GeoDataModule } from './geo-data/geo-data.module';
 import { GeoImportsModule } from './geo-imports/geo-imports.module';
 import { GovCyPdfHotelsModule } from './gov-cy-pdf-hotels/gov-cy-pdf-hotels.module';
+import { HotelBeachAccessModule } from './hotel-beach-access/hotel-beach-access.module';
 import { HotelProcessingModule } from './hotel-processing/hotel-processing.module';
 import { ParsedFilesModule } from './parsed-files/parsed-files.module';
 import { RawHotelsModule } from './raw-hotels/raw-hotels.module';
@@ -23,6 +24,7 @@ const MONGODB_URI =
     GeoDataModule,
     GeoImportsModule,
     GovCyPdfHotelsModule,
+    HotelBeachAccessModule,
     HotelProcessingModule,
     ParsedFilesModule,
     RawHotelsModule,

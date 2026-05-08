@@ -1,6 +1,7 @@
 import { Types } from 'mongoose';
 import { BEACH_GEOMETRY_KIND } from '../constants/beach-geometry-kind.enum';
 import { BEACH_TYPE } from '../constants/beach-type.enum';
+import { IBeachAccessPoint } from './beach-access-point.interface';
 import { IBeachGeoJsonGeometry } from './beach-geo-json-geometry.interface';
 import { IBeachGeoPoint } from './beach-geo-point.interface';
 import { IBeachProfileLifecycle } from './beach-profile-lifecycle.interface';
@@ -19,6 +20,7 @@ export interface IBeachProfile {
   sourceProperties: Record<string, unknown>;
   sourceHashes: IBeachProfileSourceHashes;
   beachType: BEACH_TYPE;
+  accessPoints: IBeachAccessPoint[];
   quality: IBeachProfileQuality;
   lifecycle: IBeachProfileLifecycle;
   createdAt: Date;

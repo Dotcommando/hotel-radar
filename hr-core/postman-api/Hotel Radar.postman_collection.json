@@ -955,6 +955,180 @@
           "response": []
         }
       ]
+    },
+    {
+      "name": "Paths",
+      "item": [
+        {
+          "name": "Hotel Beach Access. Start Run",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const response = pm.response.json();",
+                  "",
+                  "if (response.runId) {",
+                  "  pm.environment.set('hotelBeachAccessRunId', response.runId);",
+                  "  pm.collectionVariables.set('hotelBeachAccessRunId', response.runId);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{hrCoreBaseUrl}}/hotel-beach-access/runs",
+              "host": [
+                "{{hrCoreBaseUrl}}"
+              ],
+              "path": [
+                "hotel-beach-access",
+                "runs"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Hotel Beach Access. Active Run",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{hrCoreBaseUrl}}/hotel-beach-access/runs/active",
+              "host": [
+                "{{hrCoreBaseUrl}}"
+              ],
+              "path": [
+                "hotel-beach-access",
+                "runs",
+                "active"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Hotel Beach Access. Run by Id",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{hrCoreBaseUrl}}/hotel-beach-access/runs/{{hotelBeachAccessRunId}}",
+              "host": [
+                "{{hrCoreBaseUrl}}"
+              ],
+              "path": [
+                "hotel-beach-access",
+                "runs",
+                "{{hotelBeachAccessRunId}}"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Hotel Beach Access. Progress",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{hrCoreBaseUrl}}/hotel-beach-access/progress",
+              "host": [
+                "{{hrCoreBaseUrl}}"
+              ],
+              "path": [
+                "hotel-beach-access",
+                "progress"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Hotel Beach Access. Beaches near hotel",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{hrCoreBaseUrl}}/hotel-beach-access/hotels/{{canonicalHotelId}}/beaches?limit=20",
+              "host": [
+                "{{hrCoreBaseUrl}}"
+              ],
+              "path": [
+                "hotel-beach-access",
+                "hotels",
+                "{{canonicalHotelId}}",
+                "beaches"
+              ],
+              "query": [
+                {
+                  "key": "limit",
+                  "value": "20"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Hotel Beach Access. Hotels near beach",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{hrCoreBaseUrl}}/hotel-beach-access/beaches/{{beachProfileId}}/hotels?limit=20",
+              "host": [
+                "{{hrCoreBaseUrl}}"
+              ],
+              "path": [
+                "hotel-beach-access",
+                "beaches",
+                "{{beachProfileId}}",
+                "hotels"
+              ],
+              "query": [
+                {
+                  "key": "limit",
+                  "value": "20"
+                }
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
     }
   ],
   "variable": [
@@ -970,6 +1144,11 @@
     },
     {
       "key": "geoImportRunId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "hotelBeachAccessRunId",
       "value": "",
       "type": "string"
     },

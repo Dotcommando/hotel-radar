@@ -12,6 +12,7 @@ import { BEACH_QUALITY_STATUS } from './constants/beach-quality-status.enum';
 import { BEACH_TYPE } from './constants/beach-type.enum';
 import { IBeachProfile } from './types/beach-profile.interface';
 import { IBeachProfileListFilters } from './types/beach-profile-list-filters.interface';
+import { IBeachProfileWithDistance } from './types/beach-profile-with-distance.interface';
 import { IBeachProfilesStats } from './types/beach-profiles-stats.interface';
 import { IUpsertOsmOverpassBeachProfile } from './types/upsert-osm-overpass-beach-profile.interface';
 
@@ -41,6 +42,7 @@ export class BeachProfilesService {
     if (existing === null) {
       await this.beachProfileModel.create({
         _id: new Types.ObjectId(),
+        accessPoints: [],
         beachType: params.beachType,
         createdAt: now,
         geometry: params.geometry,
@@ -172,6 +174,33 @@ export class BeachProfilesService {
       })
       .skip(filters.offset)
       .limit(filters.limit)
+      .exec();
+  }
+
+  async findNearestActiveProfiles(
+    point: {
+      type: 'Point';
+      coordinates: [number, number];
+    },
+    limit: number,
+  ): Promise<IBeachProfileWithDistance[]> {
+    return this.beachProfileModel
+      .aggregate<IBeachProfileWithDistance>([
+        {
+          $geoNear: {
+            distanceField: 'distanceMeters',
+            key: 'point',
+            near: point,
+            query: {
+              'lifecycle.status': BEACH_PROFILE_LIFECYCLE_STATUS.ACTIVE,
+            },
+            spherical: true,
+          },
+        },
+        {
+          $limit: limit,
+        },
+      ])
       .exec();
   }
 

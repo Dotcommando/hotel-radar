@@ -24,6 +24,7 @@ geometryKind
 sourceProperties
 sourceHashes
 beachType
+accessPoints
 quality
 lifecycle
 createdAt
@@ -47,6 +48,8 @@ quality.status = RAW
 quality.confidence = MEDIUM
 lifecycle.status = ACTIVE
 ```
+
+`accessPoints` are optional curated or imported real beach entry points. Generated route target points from hotel beach access computation must not be stored here.
 
 ## Current Import Behavior
 
@@ -90,3 +93,5 @@ Do not store beaches as `hotel_geo_candidates`.
 Do not collapse beach polygons or points into generic POI in this feature. Future generic POI can be separate, while beaches remain product-level geo entities.
 
 Do not delete beaches that disappear from a later source file.
+
+Do not persist generated hotel-beach-access routing target candidates to `accessPoints`. They belong only in derived computation results.

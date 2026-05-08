@@ -33,6 +33,7 @@ Future product-facing services should read `canonical_hotels` and should not dep
 - `hotel-geo-candidates` owns external hotel-like geo source objects in `hotel_geo_candidates`.
 - `beach-profiles` owns first-class beach entities in `beach_profiles`.
 - `geo-data` owns read-only inspection endpoints for imported geo data.
+- `hotel-beach-access` owns derived hotel-to-beach walking access runs, run items, edges, and BullMQ orchestration.
 
 ## Processing Direction
 
@@ -133,6 +134,19 @@ GET /geo-data/beaches
 GET /geo-data/beaches/:id
 GET /geo-data/beaches/stats
 ```
+
+Hotel beach access endpoints are computed on demand and store derived edges:
+
+```text
+POST /hotel-beach-access/runs
+GET  /hotel-beach-access/runs/active
+GET  /hotel-beach-access/runs/:runId
+GET  /hotel-beach-access/progress
+GET  /hotel-beach-access/hotels/:canonicalHotelId/beaches
+GET  /hotel-beach-access/beaches/:beachProfileId/hotels
+```
+
+Hotel beach access uses `beach_profiles` as the beach source, `canonical_hotels` as the hotel source, and writes recomputable derived data to `hotel_beach_access_edges`.
 
 Geo imports are synchronous in the current implementation and import local GeoJSON files directly during the request. They are not BullMQ jobs yet.
 
