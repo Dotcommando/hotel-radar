@@ -3,6 +3,8 @@ import { CANONICAL_HOTEL_CAPACITY_MODE } from '../../canonical-hotel-candidates/
 import { CANONICAL_HOTEL_KIND } from '../../canonical-hotel-candidates/constants/canonical-hotel-kind.enum';
 import { CANONICAL_HOTELS_COLLECTION_NAME } from '../constants/canonical-hotels-collection-name.constant';
 import { CANONICAL_HOTEL_STATUS } from '../constants/canonical-hotel-status.enum';
+import { CANONICAL_HOTEL_VERIFICATION_ISSUE } from '../constants/canonical-hotel-verification-issue.enum';
+import { CANONICAL_HOTEL_VERIFICATION_STATUS } from '../constants/canonical-hotel-verification-status.enum';
 import { HOTEL_DECLARED_WEBSITE_KIND } from '../constants/hotel-declared-website-kind.enum';
 import { HOTEL_WEB_PRESENCE_SOURCE } from '../constants/hotel-web-presence-source.enum';
 import { ICanonicalHotel } from '../types/canonical-hotel.interface';
@@ -242,6 +244,31 @@ const sourceSchema = new Schema(
   },
 );
 
+const verificationSchema = new Schema(
+  {
+    issues: {
+      default: [],
+      enum: Object.values(CANONICAL_HOTEL_VERIFICATION_ISSUE),
+      required: true,
+      type: [String],
+    },
+    status: {
+      default: CANONICAL_HOTEL_VERIFICATION_STATUS.UNREVIEWED,
+      enum: Object.values(CANONICAL_HOTEL_VERIFICATION_STATUS),
+      required: true,
+      type: String,
+    },
+    updatedAt: {
+      default: null,
+      required: false,
+      type: Date,
+    },
+  },
+  {
+    _id: false,
+  },
+);
+
 export const canonicalHotelSchema = new Schema<ICanonicalHotel>(
   {
     canonicalKey: {
@@ -317,6 +344,19 @@ export const canonicalHotelSchema = new Schema<ICanonicalHotel>(
       default: (): Date => new Date(),
       required: true,
       type: Date,
+    },
+    verification: {
+      default: (): {
+        issues: [];
+        status: CANONICAL_HOTEL_VERIFICATION_STATUS;
+        updatedAt: null;
+      } => ({
+        issues: [],
+        status: CANONICAL_HOTEL_VERIFICATION_STATUS.UNREVIEWED,
+        updatedAt: null,
+      }),
+      required: true,
+      type: verificationSchema,
     },
     webPresence: {
       required: true,

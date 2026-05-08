@@ -1,10 +1,10 @@
 import { Injectable } from '@nestjs/common';
-import { CANONICAL_HOTEL_STATUS } from '../../canonical-hotels/constants/canonical-hotel-status.enum';
 import { GeoHotelMatchingRepository } from '../repositories/geo-hotel-matching.repository';
 import { IAutoMatchHotelGeoCandidateResultItem } from '../types/auto-match-hotel-geo-candidates-result.interface';
 import { IListCanonicalHotelsWithoutGeoQuery } from '../types/list-canonical-hotels-without-geo-query.interface';
 import { IListCanonicalHotelsWithoutGeoResult } from '../types/list-canonical-hotels-without-geo-result.interface';
 import { IUnmatchedCanonicalHotelResultItem } from '../types/list-unmatched-canonical-hotels-result.interface';
+import { isCanonicalHotelEligibleForGeoMatching } from '../utils/canonical-hotel-geo-eligibility.util';
 import { AutoMatchHotelGeoCandidatesUseCase } from './auto-match-hotel-geo-candidates.use-case';
 
 @Injectable()
@@ -27,7 +27,7 @@ export class ListCanonicalHotelsWithoutGeoUseCase {
     const hotels = await this.repository.listCanonicalHotelsForGeoMatching();
     const hotelsWithoutGeo = hotels.filter(
       (hotel) =>
-        hotel.status === CANONICAL_HOTEL_STATUS.ACTIVE &&
+        isCanonicalHotelEligibleForGeoMatching(hotel) &&
         hotel.geo.point === null,
     );
     const suggestionsByHotelId = includeSuggestions

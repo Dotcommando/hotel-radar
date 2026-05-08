@@ -2,6 +2,7 @@ import { Types } from 'mongoose';
 import { CANONICAL_HOTEL_CAPACITY_MODE } from '../../canonical-hotel-candidates/constants/canonical-hotel-capacity-mode.enum';
 import { CANONICAL_HOTEL_KIND } from '../../canonical-hotel-candidates/constants/canonical-hotel-kind.enum';
 import { CANONICAL_HOTEL_STATUS } from '../../canonical-hotels/constants/canonical-hotel-status.enum';
+import { CANONICAL_HOTEL_VERIFICATION_STATUS } from '../../canonical-hotels/constants/canonical-hotel-verification-status.enum';
 import { ICanonicalHotel } from '../../canonical-hotels/types/canonical-hotel.interface';
 import { GEO_SOURCE_DATASET } from '../../geo-import-runs/constants/geo-source-dataset.enum';
 import { GEO_SOURCE_TYPE } from '../../geo-import-runs/constants/geo-source-type.enum';
@@ -126,6 +127,37 @@ describe('ListCanonicalHotelsWithoutGeoUseCase', () => {
 
     expect(result.total).toBe(1);
     expect(result.items).toHaveLength(1);
+    expect(result.items[0].canonicalHotel._id).toBe(activeHotel._id.toString());
+  });
+
+  it('does not return canonical hotels with unverified location', async () => {
+    const activeHotel = buildCanonicalHotelFixture({
+      _id: new Types.ObjectId('69f88430878f7fca1f7e0ac8'),
+      canonicalName: 'ACTIVE HOTEL',
+    });
+    const locationUnverifiedHotel = buildCanonicalHotelFixture({
+      _id: new Types.ObjectId('69f88430878f7fca1f7e0ac9'),
+      canonicalName: 'UNVERIFIED HOTEL',
+      verification: {
+        issues: [],
+        status: CANONICAL_HOTEL_VERIFICATION_STATUS.LOCATION_UNVERIFIED,
+        updatedAt: new Date('2026-05-08T09:00:00.000Z'),
+      },
+    });
+    const repository = new InMemoryGeoHotelMatchingRepository(
+      [activeHotel, locationUnverifiedHotel],
+      [],
+    );
+    const useCase = new ListCanonicalHotelsWithoutGeoUseCase(
+      repository,
+      new AutoMatchHotelGeoCandidatesUseCase(repository),
+    );
+
+    const result = await useCase.execute({
+      includeSuggestions: false,
+    });
+
+    expect(result.total).toBe(1);
     expect(result.items[0].canonicalHotel._id).toBe(activeHotel._id.toString());
   });
 });
@@ -317,6 +349,11 @@ function buildCanonicalHotelFixture(
     },
     status: CANONICAL_HOTEL_STATUS.ACTIVE,
     updatedAt: now,
+    verification: {
+      issues: [],
+      status: CANONICAL_HOTEL_VERIFICATION_STATUS.UNREVIEWED,
+      updatedAt: null,
+    },
     webPresence: {
       declaredWebsiteKind: 'own_website',
       domains: contacts.domains,

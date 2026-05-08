@@ -2,6 +2,7 @@ import { Types } from 'mongoose';
 import { CANONICAL_HOTEL_CAPACITY_MODE } from '../../canonical-hotel-candidates/constants/canonical-hotel-capacity-mode.enum';
 import { CANONICAL_HOTEL_KIND } from '../../canonical-hotel-candidates/constants/canonical-hotel-kind.enum';
 import { CANONICAL_HOTEL_STATUS } from '../../canonical-hotels/constants/canonical-hotel-status.enum';
+import { CANONICAL_HOTEL_VERIFICATION_STATUS } from '../../canonical-hotels/constants/canonical-hotel-verification-status.enum';
 import { ICanonicalHotel } from '../../canonical-hotels/types/canonical-hotel.interface';
 import { GEO_SOURCE_DATASET } from '../../geo-import-runs/constants/geo-source-dataset.enum';
 import { GEO_SOURCE_TYPE } from '../../geo-import-runs/constants/geo-source-type.enum';
@@ -91,6 +92,30 @@ describe('ManualMatchHotelGeoCandidateUseCase', () => {
   it('rejects permanently closed canonical hotels before applying a manual match', async () => {
     const hotel = buildCanonicalHotelFixture({
       status: CANONICAL_HOTEL_STATUS.PERMANENTLY_CLOSED,
+    });
+    const candidate = buildHotelGeoCandidateFixture();
+    const repository = new InMemoryGeoHotelMatchingRepository(
+      [hotel],
+      [candidate],
+    );
+    const useCase = new ManualMatchHotelGeoCandidateUseCase(repository);
+
+    await expect(
+      useCase.execute({
+        canonicalHotelId: hotel._id.toString(),
+        hotelGeoCandidateId: candidate._id.toString(),
+      }),
+    ).rejects.toBeInstanceOf(CanonicalHotelForGeoMatchNotFoundError);
+    expect(repository.appliedManualMatches).toHaveLength(0);
+  });
+
+  it('rejects canonical hotels with unverified location before applying a manual match', async () => {
+    const hotel = buildCanonicalHotelFixture({
+      verification: {
+        issues: [],
+        status: CANONICAL_HOTEL_VERIFICATION_STATUS.LOCATION_UNVERIFIED,
+        updatedAt: new Date('2026-05-08T09:00:00.000Z'),
+      },
     });
     const candidate = buildHotelGeoCandidateFixture();
     const repository = new InMemoryGeoHotelMatchingRepository(
@@ -305,6 +330,11 @@ function buildCanonicalHotelFixture(
     },
     status: CANONICAL_HOTEL_STATUS.ACTIVE,
     updatedAt: now,
+    verification: {
+      issues: [],
+      status: CANONICAL_HOTEL_VERIFICATION_STATUS.UNREVIEWED,
+      updatedAt: null,
+    },
     webPresence: {
       declaredWebsiteKind: 'own_website',
       domains: contacts.domains,

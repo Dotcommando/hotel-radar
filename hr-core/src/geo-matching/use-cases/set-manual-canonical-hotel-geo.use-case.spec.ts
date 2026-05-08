@@ -2,6 +2,7 @@ import { Types } from 'mongoose';
 import { CANONICAL_HOTEL_CAPACITY_MODE } from '../../canonical-hotel-candidates/constants/canonical-hotel-capacity-mode.enum';
 import { CANONICAL_HOTEL_KIND } from '../../canonical-hotel-candidates/constants/canonical-hotel-kind.enum';
 import { CANONICAL_HOTEL_STATUS } from '../../canonical-hotels/constants/canonical-hotel-status.enum';
+import { CANONICAL_HOTEL_VERIFICATION_STATUS } from '../../canonical-hotels/constants/canonical-hotel-verification-status.enum';
 import { ICanonicalHotel } from '../../canonical-hotels/types/canonical-hotel.interface';
 import { IHotelGeoCandidate } from '../../hotel-geo-candidates/types/hotel-geo-candidate.interface';
 import { GEO_MATCH_ACTION } from '../constants/geo-match-action.enum';
@@ -167,6 +168,26 @@ describe('SetManualCanonicalHotelGeoUseCase', () => {
     expect(repository.appliedManualCanonicalHotelGeo).toHaveLength(0);
   });
 
+  it('rejects canonical hotels with unverified location before applying geo', async () => {
+    const hotel = buildCanonicalHotelFixture({
+      verification: {
+        issues: [],
+        status: CANONICAL_HOTEL_VERIFICATION_STATUS.LOCATION_UNVERIFIED,
+        updatedAt: new Date('2026-05-08T09:00:00.000Z'),
+      },
+    });
+    const repository = new InMemoryGeoHotelMatchingRepository([hotel], []);
+    const useCase = new SetManualCanonicalHotelGeoUseCase(repository);
+
+    await expect(
+      useCase.execute({
+        canonicalHotelId: hotel._id.toString(),
+        coords: '35.1696808, 33.3634435',
+      }),
+    ).rejects.toBeInstanceOf(CanonicalHotelForGeoMatchNotFoundError);
+    expect(repository.appliedManualCanonicalHotelGeo).toHaveLength(0);
+  });
+
   it('surfaces repository conflicts as manual geo conflicts', async () => {
     const hotel = buildCanonicalHotelFixture();
     const repository = new InMemoryGeoHotelMatchingRepository(
@@ -316,6 +337,11 @@ function buildCanonicalHotelFixture(
     },
     status: CANONICAL_HOTEL_STATUS.ACTIVE,
     updatedAt: now,
+    verification: {
+      issues: [],
+      status: CANONICAL_HOTEL_VERIFICATION_STATUS.UNREVIEWED,
+      updatedAt: null,
+    },
     webPresence: {
       declaredWebsiteKind: 'own_website',
       domains: contacts.domains,

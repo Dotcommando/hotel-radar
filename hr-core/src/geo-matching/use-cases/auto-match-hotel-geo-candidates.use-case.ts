@@ -1,5 +1,4 @@
 import { Injectable } from '@nestjs/common';
-import { CANONICAL_HOTEL_STATUS } from '../../canonical-hotels/constants/canonical-hotel-status.enum';
 import { ICanonicalHotel } from '../../canonical-hotels/types/canonical-hotel.interface';
 import { IHotelGeoCandidate } from '../../hotel-geo-candidates/types/hotel-geo-candidate.interface';
 import { GEO_MATCH_ACTION } from '../constants/geo-match-action.enum';
@@ -22,6 +21,7 @@ import {
   normalizeGeoMatchNameReduced,
   normalizeGeoMatchPhone,
 } from '../utils/geo-match-normalization.util';
+import { isCanonicalHotelEligibleForGeoMatching } from '../utils/canonical-hotel-geo-eligibility.util';
 
 interface IGeoMatchIdentity {
   domains: Set<string>;
@@ -175,7 +175,7 @@ export class AutoMatchHotelGeoCandidatesUseCase {
   }
 
   private isActiveCanonicalHotel(hotel: ICanonicalHotel): boolean {
-    return hotel.status === CANONICAL_HOTEL_STATUS.ACTIVE;
+    return isCanonicalHotelEligibleForGeoMatching(hotel);
   }
 
   private buildProposals(

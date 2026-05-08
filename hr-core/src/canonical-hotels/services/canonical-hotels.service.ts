@@ -12,6 +12,7 @@ import { CANONICAL_HOTEL_MODEL_NAME } from '../constants/canonical-hotel-model-n
 import { CANONICAL_HOTEL_PROCESSING_ACTION } from '../constants/canonical-hotel-processing-action.enum';
 import { CANONICAL_HOTEL_REVIEW_REASON } from '../constants/canonical-hotel-review-reason.enum';
 import { CANONICAL_HOTEL_STATUS } from '../constants/canonical-hotel-status.enum';
+import { CANONICAL_HOTEL_VERIFICATION_STATUS } from '../constants/canonical-hotel-verification-status.enum';
 import { CanonicalHotelCanonicalNameNotUniqueError } from '../errors/canonical-hotel-canonical-name-not-unique.error';
 import {
   IApplyCanonicalHotelCandidateResult,
@@ -115,6 +116,11 @@ export class CanonicalHotelsService {
         lastSeenAt: snapshot.source.lastCandidateSeenAt,
         status: CANONICAL_HOTEL_STATUS.ACTIVE,
         updatedAt: snapshot.source.lastCandidateSeenAt,
+        verification: {
+          issues: [],
+          status: CANONICAL_HOTEL_VERIFICATION_STATUS.UNREVIEWED,
+          updatedAt: null,
+        },
       });
 
       return {

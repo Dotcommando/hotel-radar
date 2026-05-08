@@ -6,6 +6,7 @@ import { IHotelContacts } from '../../hotel-registry-entries/types/hotel-contact
 import { IHotelLocation } from '../../hotel-registry-entries/types/hotel-location.interface';
 import { CANONICAL_HOTEL_STATUS } from '../constants/canonical-hotel-status.enum';
 import { ICanonicalHotelSourceState } from './canonical-hotel-source-state.interface';
+import { ICanonicalHotelVerification } from './canonical-hotel-verification.interface';
 import { IHotelDeclaredWebPresence } from './hotel-declared-web-presence.interface';
 import { IHotelGeo } from './hotel-geo.interface';
 
@@ -24,6 +25,7 @@ export interface ICanonicalHotel {
   components: ICanonicalHotelComponent[];
   source: ICanonicalHotelSourceState;
   issues: string[];
+  verification: ICanonicalHotelVerification;
   firstSeenAt: Date;
   lastSeenAt: Date;
   createdAt: Date;

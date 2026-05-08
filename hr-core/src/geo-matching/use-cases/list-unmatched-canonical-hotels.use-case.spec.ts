@@ -2,6 +2,7 @@ import { Types } from 'mongoose';
 import { CANONICAL_HOTEL_CAPACITY_MODE } from '../../canonical-hotel-candidates/constants/canonical-hotel-capacity-mode.enum';
 import { CANONICAL_HOTEL_KIND } from '../../canonical-hotel-candidates/constants/canonical-hotel-kind.enum';
 import { CANONICAL_HOTEL_STATUS } from '../../canonical-hotels/constants/canonical-hotel-status.enum';
+import { CANONICAL_HOTEL_VERIFICATION_STATUS } from '../../canonical-hotels/constants/canonical-hotel-verification-status.enum';
 import { ICanonicalHotel } from '../../canonical-hotels/types/canonical-hotel.interface';
 import { GEO_SOURCE_DATASET } from '../../geo-import-runs/constants/geo-source-dataset.enum';
 import { GEO_SOURCE_TYPE } from '../../geo-import-runs/constants/geo-source-type.enum';
@@ -223,6 +224,44 @@ describe('ListUnmatchedCanonicalHotelsUseCase', () => {
     expect(result.items).toHaveLength(1);
     expect(result.items[0].canonicalHotel._id).toBe(activeHotel._id.toString());
   });
+
+  it('does not return canonical hotels with unverified location even with suggestions', async () => {
+    const locationUnverifiedHotel = buildCanonicalHotelFixture({
+      canonicalName: 'NICOLAS COLOR',
+      contacts: {
+        domains: ['nicholas.com.cy'],
+        emails: ['info@nicholas.com.cy'],
+        phones: ['+35723721988'],
+        websites: ['https://nicholas.com.cy'],
+      },
+      verification: {
+        issues: [],
+        status: CANONICAL_HOTEL_VERIFICATION_STATUS.LOCATION_UNVERIFIED,
+        updatedAt: new Date('2026-05-08T09:00:00.000Z'),
+      },
+    });
+    const candidate = buildHotelGeoCandidateFixture({
+      name: 'Nicolas Color',
+      sourceProperties: {
+        name: 'Nicolas Color',
+        phone: '+357 23 721988',
+        tourism: 'hotel',
+      },
+    });
+    const repository = new InMemoryGeoHotelMatchingRepository(
+      [locationUnverifiedHotel],
+      [candidate],
+    );
+    const useCase = new ListUnmatchedCanonicalHotelsUseCase(
+      repository,
+      new AutoMatchHotelGeoCandidatesUseCase(repository),
+    );
+
+    const result = await useCase.execute();
+
+    expect(result.total).toBe(0);
+    expect(result.items).toEqual([]);
+  });
 });
 
 class InMemoryGeoHotelMatchingRepository extends GeoHotelMatchingRepository {
@@ -423,6 +462,11 @@ function buildCanonicalHotelFixture(
     },
     status: CANONICAL_HOTEL_STATUS.ACTIVE,
     updatedAt: now,
+    verification: {
+      issues: [],
+      status: CANONICAL_HOTEL_VERIFICATION_STATUS.UNREVIEWED,
+      updatedAt: null,
+    },
     webPresence: {
       declaredWebsiteKind: 'own_website',
       domains: contacts.domains,

@@ -4,6 +4,8 @@ import { CANONICAL_HOTEL_KIND } from '../../canonical-hotel-candidates/constants
 import { CANONICAL_HOTEL_PROCESSING_ACTION } from '../constants/canonical-hotel-processing-action.enum';
 import { CANONICAL_HOTEL_REVIEW_REASON } from '../constants/canonical-hotel-review-reason.enum';
 import { CANONICAL_HOTEL_STATUS } from '../constants/canonical-hotel-status.enum';
+import { CANONICAL_HOTEL_VERIFICATION_ISSUE } from '../constants/canonical-hotel-verification-issue.enum';
+import { CANONICAL_HOTEL_VERIFICATION_STATUS } from '../constants/canonical-hotel-verification-status.enum';
 import { CanonicalHotelCanonicalNameNotUniqueError } from '../errors/canonical-hotel-canonical-name-not-unique.error';
 import { ICanonicalHotel } from '../types/canonical-hotel.interface';
 import { CanonicalHotelsService } from './canonical-hotels.service';
@@ -23,15 +25,26 @@ describe('CanonicalHotelsService', () => {
     expect(result.canonicalHotelId).not.toBeNull();
     expect(model.documents).toHaveLength(1);
     expect(model.documents[0].canonicalName).toBe('PINE VIEW BOUTIQUE');
+    expect(model.documents[0].verification).toEqual({
+      issues: [],
+      status: CANONICAL_HOTEL_VERIFICATION_STATUS.UNREVIEWED,
+      updatedAt: null,
+    });
     expect(model.documents[0]).not.toHaveProperty('normalizedName');
   });
 
   it('updates capacity on an exact match', async () => {
+    const verificationUpdatedAt = new Date('2026-05-07T12:00:00.000Z');
     const existing = buildCanonicalHotelFixture({
       capacity: {
         beds: 10,
         mode: CANONICAL_HOTEL_CAPACITY_MODE.SINGLE_COMPONENT,
         rooms: 5,
+      },
+      verification: {
+        issues: [CANONICAL_HOTEL_VERIFICATION_ISSUE.EMAIL_NO_RESPONSE],
+        status: CANONICAL_HOTEL_VERIFICATION_STATUS.LOCATION_UNVERIFIED,
+        updatedAt: verificationUpdatedAt,
       },
     });
     const model = new InMemoryCanonicalHotelModel([existing]);
@@ -47,6 +60,11 @@ describe('CanonicalHotelsService', () => {
       beds: 12,
       mode: CANONICAL_HOTEL_CAPACITY_MODE.SINGLE_COMPONENT,
       rooms: 6,
+    });
+    expect(model.documents[0].verification).toEqual({
+      issues: [CANONICAL_HOTEL_VERIFICATION_ISSUE.EMAIL_NO_RESPONSE],
+      status: CANONICAL_HOTEL_VERIFICATION_STATUS.LOCATION_UNVERIFIED,
+      updatedAt: verificationUpdatedAt,
     });
   });
 
@@ -390,6 +408,11 @@ function buildCanonicalHotelFixture(
     },
     status: CANONICAL_HOTEL_STATUS.ACTIVE,
     updatedAt: new Date('2026-05-03T17:15:15.000Z'),
+    verification: {
+      issues: [],
+      status: CANONICAL_HOTEL_VERIFICATION_STATUS.UNREVIEWED,
+      updatedAt: null,
+    },
     webPresence: {
       declaredWebsiteKind: 'own_website',
       domains: ['pineview.com.cy'],

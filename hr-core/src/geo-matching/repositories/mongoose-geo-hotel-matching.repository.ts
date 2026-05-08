@@ -3,6 +3,7 @@ import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import { CANONICAL_HOTEL_MODEL_NAME } from '../../canonical-hotels/constants/canonical-hotel-model-name.constant';
 import { CANONICAL_HOTEL_STATUS } from '../../canonical-hotels/constants/canonical-hotel-status.enum';
+import { CANONICAL_HOTEL_VERIFICATION_STATUS } from '../../canonical-hotels/constants/canonical-hotel-verification-status.enum';
 import { ICanonicalHotel } from '../../canonical-hotels/types/canonical-hotel.interface';
 import { HOTEL_GEO_CANDIDATE_LIFECYCLE_STATUS } from '../../hotel-geo-candidates/constants/hotel-geo-candidate-lifecycle-status.enum';
 import { HOTEL_GEO_CANDIDATE_MATCH_STATUS } from '../../hotel-geo-candidates/constants/hotel-geo-candidate-match-status.enum';
@@ -223,6 +224,11 @@ export class MongooseGeoHotelMatchingRepository extends GeoHotelMatchingReposito
               source: MANUAL_CANONICAL_HOTEL_GEO_SOURCE,
             },
             updatedAt: now,
+            verification: {
+              issues: [],
+              status: CANONICAL_HOTEL_VERIFICATION_STATUS.LOCATION_VERIFIED,
+              updatedAt: now,
+            },
           },
         },
       )
@@ -298,6 +304,11 @@ export class MongooseGeoHotelMatchingRepository extends GeoHotelMatchingReposito
               source,
             },
             updatedAt: now,
+            verification: {
+              issues: [],
+              status: CANONICAL_HOTEL_VERIFICATION_STATUS.LOCATION_VERIFIED,
+              updatedAt: now,
+            },
           },
         },
       )

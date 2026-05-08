@@ -8,6 +8,7 @@ import { Types } from 'mongoose';
 import { CANONICAL_HOTEL_CAPACITY_MODE } from '../canonical-hotel-candidates/constants/canonical-hotel-capacity-mode.enum';
 import { CANONICAL_HOTEL_KIND } from '../canonical-hotel-candidates/constants/canonical-hotel-kind.enum';
 import { CANONICAL_HOTEL_STATUS } from './constants/canonical-hotel-status.enum';
+import { CANONICAL_HOTEL_VERIFICATION_STATUS } from './constants/canonical-hotel-verification-status.enum';
 import { HOTEL_DECLARED_WEBSITE_KIND } from './constants/hotel-declared-website-kind.enum';
 import { HOTEL_WEB_PRESENCE_SOURCE } from './constants/hotel-web-presence-source.enum';
 import { CanonicalHotelCanonicalNameNotUniqueError } from './errors/canonical-hotel-canonical-name-not-unique.error';
@@ -177,6 +178,11 @@ function buildCanonicalHotelFixture(
     },
     status: CANONICAL_HOTEL_STATUS.ACTIVE,
     updatedAt: now,
+    verification: {
+      issues: [],
+      status: CANONICAL_HOTEL_VERIFICATION_STATUS.UNREVIEWED,
+      updatedAt: null,
+    },
     webPresence: {
       declaredWebsiteKind: HOTEL_DECLARED_WEBSITE_KIND.MISSING,
       domains: [],
