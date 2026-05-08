@@ -102,7 +102,7 @@ describe('canonicalHotelSchema', () => {
       verification: {
         issues: [
           CANONICAL_HOTEL_VERIFICATION_ISSUE.GOOGLE_MAPS_NOT_FOUND,
-          CANONICAL_HOTEL_VERIFICATION_ISSUE.EMAIL_NO_RESPONSE,
+          CANONICAL_HOTEL_VERIFICATION_ISSUE.NO_EMAIL_FOR_VERIFICATION,
         ],
         status: CANONICAL_HOTEL_VERIFICATION_STATUS.LOCATION_UNVERIFIED,
         updatedAt: now,

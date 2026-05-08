@@ -14,6 +14,7 @@ interface ICanonicalHotelVerificationDataFixModule {
   CANONICAL_HOTEL_VERIFICATION_ISSUE: {
     EMAIL_NO_RESPONSE: string;
     GOOGLE_MAPS_NOT_FOUND: string;
+    NO_EMAIL_FOR_VERIFICATION: string;
   };
   CANONICAL_HOTEL_VERIFICATION_STATUS: {
     LOCATION_UNVERIFIED: string;
@@ -23,6 +24,8 @@ interface ICanonicalHotelVerificationDataFixModule {
   HOTEL_GEO_CANDIDATE_MATCH_STATUS: {
     CONFIRMED: string;
   };
+  DEFERRED_LOCATION_UNVERIFIED_CANONICAL_HOTEL_IDS: string[];
+  DEFERRED_LOCATION_UNVERIFIED_ISSUES: string[];
   TARGET_LOCATION_UNVERIFIED_CANONICAL_HOTEL_ID: string;
 }
 
@@ -30,6 +33,8 @@ interface IDataFixReport {
   canonicalHotels: {
     confirmedManualMatchMatched: number;
     confirmedManualMatchModified: number;
+    deferredTargetsMatched: number;
+    deferredTargetsModified: number;
     manualGeoMatched: number;
     manualGeoModified: number;
     missingBackfillMatched: number;
@@ -325,6 +330,13 @@ describe('backfill canonical hotel verification script', () => {
           source: null,
         },
       },
+      {
+        _id: fixModule.DEFERRED_LOCATION_UNVERIFIED_CANONICAL_HOTEL_IDS[0],
+        canonicalName: 'DEFERRED TARGET HOTEL',
+        geo: {
+          source: null,
+        },
+      },
     ];
     const hotelGeoCandidates = [
       {
@@ -344,10 +356,12 @@ describe('backfill canonical hotel verification script', () => {
       canonicalHotels: {
         confirmedManualMatchMatched: 1,
         confirmedManualMatchModified: 1,
+        deferredTargetsMatched: 1,
+        deferredTargetsModified: 1,
         manualGeoMatched: 1,
         manualGeoModified: 1,
-        missingBackfillMatched: 4,
-        missingBackfillModified: 4,
+        missingBackfillMatched: 5,
+        missingBackfillModified: 5,
         targetMatched: 1,
         targetModified: 1,
       },
@@ -381,6 +395,14 @@ describe('backfill canonical hotel verification script', () => {
       status: fixModule.CANONICAL_HOTEL_VERIFICATION_STATUS.LOCATION_UNVERIFIED,
       updatedAt: now.toISOString(),
     });
+    expect(canonicalHotels[5].verification).toEqual({
+      issues: [
+        fixModule.CANONICAL_HOTEL_VERIFICATION_ISSUE.GOOGLE_MAPS_NOT_FOUND,
+        fixModule.CANONICAL_HOTEL_VERIFICATION_ISSUE.NO_EMAIL_FOR_VERIFICATION,
+      ],
+      status: fixModule.CANONICAL_HOTEL_VERIFICATION_STATUS.LOCATION_UNVERIFIED,
+      updatedAt: now.toISOString(),
+    });
   });
 
   it('is idempotent after the first application', async () => {
@@ -389,6 +411,13 @@ describe('backfill canonical hotel verification script', () => {
       {
         _id: fixModule.TARGET_LOCATION_UNVERIFIED_CANONICAL_HOTEL_ID,
         canonicalName: 'TARGET HOTEL',
+        geo: {
+          source: null,
+        },
+      },
+      {
+        _id: fixModule.DEFERRED_LOCATION_UNVERIFIED_CANONICAL_HOTEL_IDS[0],
+        canonicalName: 'DEFERRED TARGET HOTEL',
         geo: {
           source: null,
         },
@@ -409,6 +438,7 @@ describe('backfill canonical hotel verification script', () => {
     );
 
     expect(secondReport.canonicalHotels.missingBackfillModified).toBe(0);
+    expect(secondReport.canonicalHotels.deferredTargetsModified).toBe(0);
     expect(secondReport.canonicalHotels.targetModified).toBe(0);
   });
 });
