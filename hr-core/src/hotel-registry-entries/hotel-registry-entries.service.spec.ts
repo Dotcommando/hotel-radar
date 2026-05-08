@@ -1284,15 +1284,47 @@ describe('HotelRegistryEntriesService', () => {
       operator: 'Ev Agro Country House Ltd',
       registryKey: 'eveleos-b',
     });
+    const fourthEntry = buildRegistryEntry({
+      capacity: {
+        beds: 12,
+        rooms: 6,
+      },
+      contacts: {
+        domains: ['filokypros.com'],
+        emails: ['info@filokypros.com'],
+        phones: ['+35799520973'],
+        websites: ['https://www.filokypros.com/'],
+      },
+      establishmentType: 'TRADITIONAL HOUSES - APARTMENTS',
+      location: {
+        address: null,
+        district: 'LARNACA',
+        locality: 'Larnaca',
+        postcode: '7740',
+      },
+      name: {
+        baseName: 'EVELEOS COUNTRY HOUSE D',
+        normalized: 'EVELEOS COUNTRY HOUSE D',
+        original: 'EVELEOS COUNTRY HOUSE D',
+        suffix: null,
+      },
+      operator: 'Ev Agro Country House Ltd',
+      registryKey: 'eveleos-d',
+    });
 
-    mockFindResultSequence([[firstEntry], [firstEntry, secondEntry]]);
+    mockFindResultSequence([
+      [firstEntry],
+      [firstEntry, secondEntry, fourthEntry],
+    ]);
 
     const result = await service.readSafeCanonicalCandidateGroup(secondEntry);
 
-    expect(result).toEqual([firstEntry, secondEntry]);
+    expect(result).toEqual([firstEntry, secondEntry, fourthEntry]);
     expect(hotelRegistryEntryModel.find).toHaveBeenCalledWith({
       'name.normalized': {
-        $in: ['EVELEOS COUNTRY HOUSE A', 'EVELEOS COUNTRY HOUSE B'],
+        $in: 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'
+          .split('')
+          .map((suffix) => `EVELEOS COUNTRY HOUSE ${suffix}`),
       },
       'processing.status': {
         $in: [

@@ -1255,7 +1255,7 @@ describe('CanonicalHotelCandidateBuilderService', () => {
     expect(result.build.rule).toBe('same_name_multi_type_same_contacts');
   });
 
-  it('groups known EVELEOS A and B entries into a property complex', () => {
+  it('groups known EVELEOS letter-suffix entries into a property complex', () => {
     const firstEntry = buildRegistryEntry({
       capacity: {
         beds: 8,
@@ -1312,8 +1312,40 @@ describe('CanonicalHotelCandidateBuilderService', () => {
       registryKey:
         'rkv1|EVELEOS COUNTRY HOUSE B|TRADITIONAL HOUSES APARTMENTS|LARNACA|LARNACA|7740|',
     });
+    const fourthEntry = buildRegistryEntry({
+      capacity: {
+        beds: 12,
+        rooms: 6,
+      },
+      contacts: {
+        domains: ['filokypros.com'],
+        emails: ['info@filokypros.com'],
+        phones: ['+35799520973'],
+        websites: ['https://www.filokypros.com/'],
+      },
+      establishmentType: 'TRADITIONAL HOUSES - APARTMENTS',
+      location: {
+        address: null,
+        district: 'LARNACA',
+        locality: 'Larnaca',
+        postcode: '7740',
+      },
+      name: {
+        baseName: 'EVELEOS COUNTRY HOUSE D',
+        normalized: 'EVELEOS COUNTRY HOUSE D',
+        original: 'EVELEOS COUNTRY HOUSE D',
+        suffix: null,
+      },
+      operator: 'Ev Agro Country House Ltd',
+      registryKey:
+        'rkv1|EVELEOS COUNTRY HOUSE D|TRADITIONAL HOUSES APARTMENTS|LARNACA|LARNACA|7740|',
+    });
 
-    const result = service.buildFromRegistryEntries([secondEntry, firstEntry]);
+    const result = service.buildFromRegistryEntries([
+      fourthEntry,
+      secondEntry,
+      firstEntry,
+    ]);
 
     expect(result.kind).toBe(CANONICAL_HOTEL_KIND.PROPERTY_COMPLEX);
     expect(result.canonicalName).toBe('EVELEOS COUNTRY HOUSE');
@@ -1323,14 +1355,15 @@ describe('CanonicalHotelCandidateBuilderService', () => {
       ruleVersion: 1,
     });
     expect(result.capacity).toEqual({
-      beds: 18,
+      beds: 30,
       mode: CANONICAL_HOTEL_CAPACITY_MODE.SUM_COMPONENTS,
-      rooms: 8,
+      rooms: 14,
     });
     expect(result.operator).toBeNull();
     expect(result.components).toEqual([
       buildExpectedComponent(firstEntry),
       buildExpectedComponent(secondEntry),
+      buildExpectedComponent(fourthEntry),
     ]);
   });
 

@@ -56,6 +56,8 @@ interface ICanonicalHotelFindFilter {
   'location.postcode'?: string | null;
 }
 
+const KNOWN_PROPERTY_COMPLEX_BUILD_RULE = 'known_property_complex_group';
+
 @Injectable()
 export class CanonicalHotelsService {
   constructor(
@@ -237,7 +239,9 @@ export class CanonicalHotelsService {
       return this.buildReviewResult(
         CANONICAL_HOTEL_REVIEW_REASON.CONFLICTING_LOCATION,
         [existing._id],
-        ['Existing canonical hotel location conflicts with candidate location.'],
+        [
+          'Existing canonical hotel location conflicts with candidate location.',
+        ],
       );
     }
 
@@ -245,7 +249,9 @@ export class CanonicalHotelsService {
       return this.buildReviewResult(
         CANONICAL_HOTEL_REVIEW_REASON.CONFLICTING_COMPONENTS,
         [existing._id],
-        ['Existing canonical hotel components conflict with candidate components.'],
+        [
+          'Existing canonical hotel components conflict with candidate components.',
+        ],
       );
     }
 
@@ -272,8 +278,20 @@ export class CanonicalHotelsService {
       return false;
     }
 
-    const existingKeys = existing.components.map(({ componentKey }) => componentKey);
-    const snapshotKeys = snapshot.components.map(({ componentKey }) => componentKey);
+    const existingKeys = existing.components.map(
+      ({ componentKey }) => componentKey,
+    );
+    const snapshotKeys = snapshot.components.map(
+      ({ componentKey }) => componentKey,
+    );
+
+    if (
+      snapshot.source.lastCandidateBuildRule ===
+        KNOWN_PROPERTY_COMPLEX_BUILD_RULE &&
+      existingKeys.every((componentKey) => snapshotKeys.includes(componentKey))
+    ) {
+      return false;
+    }
 
     return !this.areStringArraysEqual(existingKeys, snapshotKeys);
   }
@@ -456,7 +474,10 @@ export class CanonicalHotelsService {
   }
 
   private areStringArraysEqual(left: string[], right: string[]): boolean {
-    return this.stableStringify([...left].sort()) === this.stableStringify([...right].sort());
+    return (
+      this.stableStringify([...left].sort()) ===
+      this.stableStringify([...right].sort())
+    );
   }
 
   private uniqueSorted(values: string[]): string[] {

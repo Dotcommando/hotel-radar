@@ -151,6 +151,72 @@ describe('CanonicalHotelsService', () => {
     );
   });
 
+  it('allows known property complex candidates to add new components', async () => {
+    const existing = buildCanonicalHotelFixture({
+      canonicalKey:
+        'chv1|property_complex|EVELEOS COUNTRY HOUSE|LARNACA|LARNACA|location_contact|+35799520973',
+      canonicalName: 'EVELEOS COUNTRY HOUSE',
+      capacity: {
+        beds: 18,
+        mode: CANONICAL_HOTEL_CAPACITY_MODE.SUM_COMPONENTS,
+        rooms: 8,
+      },
+      components: [
+        buildEveleosComponent('A', 8, 4),
+        buildEveleosComponent('B', 10, 4),
+      ],
+      contacts: buildEveleosContacts(),
+      kind: CANONICAL_HOTEL_KIND.PROPERTY_COMPLEX,
+      location: buildEveleosLocation(),
+      operator: null,
+    });
+    const model = new InMemoryCanonicalHotelModel([existing]);
+    const service = new CanonicalHotelsService(
+      model,
+      new HotelDeclaredWebPresenceService(),
+    );
+
+    const result = await service.applyCandidate(
+      buildCandidateFixture({
+        build: {
+          issues: [],
+          rule: 'known_property_complex_group',
+          ruleVersion: 1,
+        },
+        candidateKey:
+          'ccv1|group|known_property_complex_group|EVELEOS COUNTRY HOUSE|7740||filokypros.com|info@filokypros.com|+35799520973|https://www.filokypros.com/',
+        canonicalName: 'EVELEOS COUNTRY HOUSE',
+        capacity: {
+          beds: 32,
+          mode: CANONICAL_HOTEL_CAPACITY_MODE.SUM_COMPONENTS,
+          rooms: 15,
+        },
+        components: [
+          buildEveleosComponent('A', 8, 4),
+          buildEveleosComponent('B', 10, 4),
+          buildEveleosComponent('D', 14, 7),
+        ],
+        contacts: buildEveleosContacts(),
+        kind: CANONICAL_HOTEL_KIND.PROPERTY_COMPLEX,
+        location: buildEveleosLocation(),
+        operator: null,
+      }),
+    );
+
+    expect(result.action).toBe(CANONICAL_HOTEL_PROCESSING_ACTION.UPDATED);
+    expect(model.documents).toHaveLength(1);
+    expect(model.documents[0].components.map(({ name }) => name)).toEqual([
+      'EVELEOS COUNTRY HOUSE A',
+      'EVELEOS COUNTRY HOUSE B',
+      'EVELEOS COUNTRY HOUSE D',
+    ]);
+    expect(model.documents[0].capacity).toEqual({
+      beds: 32,
+      mode: CANONICAL_HOTEL_CAPACITY_MODE.SUM_COMPONENTS,
+      rooms: 15,
+    });
+  });
+
   it('requires review on conflicting location and does not modify canonical hotels', async () => {
     const existing = buildCanonicalHotelFixture({
       canonicalKey:
@@ -370,6 +436,39 @@ function buildCandidateBaseFixture() {
     },
     status: 'ready',
     updatedAt: new Date('2026-05-03T17:15:15.000Z'),
+  };
+}
+
+function buildEveleosContacts() {
+  return {
+    domains: ['filokypros.com'],
+    emails: ['info@filokypros.com'],
+    phones: ['+35799520973'],
+    websites: ['https://www.filokypros.com/'],
+  };
+}
+
+function buildEveleosLocation() {
+  return {
+    address: null,
+    district: 'LARNACA',
+    locality: 'Larnaca',
+    postcode: '7740',
+  };
+}
+
+function buildEveleosComponent(suffix: string, beds: number, rooms: number) {
+  return {
+    capacity: {
+      beds,
+      rooms,
+    },
+    componentKey: `component-v1|EVELEOS COUNTRY HOUSE ${suffix}|TRADITIONAL HOUSES - APARTMENTS|7740|`,
+    contacts: buildEveleosContacts(),
+    establishmentType: 'TRADITIONAL HOUSES - APARTMENTS',
+    location: buildEveleosLocation(),
+    name: `EVELEOS COUNTRY HOUSE ${suffix}`,
+    normalizedName: `EVELEOS COUNTRY HOUSE ${suffix}`,
   };
 }
 

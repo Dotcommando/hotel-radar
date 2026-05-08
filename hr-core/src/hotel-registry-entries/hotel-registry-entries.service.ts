@@ -440,7 +440,7 @@ export class HotelRegistryEntriesService {
     const entries = await this.hotelRegistryEntryModel
       .find({
         'name.normalized': {
-          $in: group.normalizedMemberNames,
+          $in: this.buildKnownPropertyComplexMemberNames(group),
         },
         'processing.status': {
           $in: [
@@ -1037,7 +1037,7 @@ export class HotelRegistryEntriesService {
   ): IKnownPropertyComplexGroup | null {
     return (
       KNOWN_PROPERTY_COMPLEX_GROUPS.find((group) =>
-        group.normalizedMemberNames.includes(entry.name.normalized),
+        this.isKnownPropertyComplexMember(entry.name.normalized, group),
       ) ?? null
     );
   }
@@ -1046,14 +1046,14 @@ export class HotelRegistryEntriesService {
     entries: IHotelRegistryEntry[],
     group: IKnownPropertyComplexGroup,
   ): boolean {
-    if (entries.length !== group.normalizedMemberNames.length) {
+    if (entries.length < group.minMemberCount) {
       return false;
     }
 
-    const entryNames = new Set(entries.map(({ name }) => name.normalized));
-
     return (
-      group.normalizedMemberNames.every((name) => entryNames.has(name)) &&
+      entries.every((entry) =>
+        this.isKnownPropertyComplexMember(entry.name.normalized, group),
+      ) &&
       entries.every(
         (entry) =>
           entry.status === HOTEL_REGISTRY_ENTRY_STATUS.READY &&
@@ -1062,6 +1062,30 @@ export class HotelRegistryEntriesService {
       this.allEntriesHaveMeaningfulContactOverlap(entries) &&
       this.allEntriesHaveStrictCompatibleLocation(entries)
     );
+  }
+
+  private buildKnownPropertyComplexMemberNames(
+    group: IKnownPropertyComplexGroup,
+  ): string[] {
+    return group.suffixes.map((suffix) =>
+      this.buildKnownPropertyComplexMemberName(group, suffix),
+    );
+  }
+
+  private isKnownPropertyComplexMember(
+    normalizedName: string,
+    group: IKnownPropertyComplexGroup,
+  ): boolean {
+    return this.buildKnownPropertyComplexMemberNames(group).includes(
+      normalizedName,
+    );
+  }
+
+  private buildKnownPropertyComplexMemberName(
+    group: IKnownPropertyComplexGroup,
+    suffix: string,
+  ): string {
+    return `${group.normalizedBaseName} ${suffix}`;
   }
 
   private hasOneNormalizedName(entries: IHotelRegistryEntry[]): boolean {
@@ -1592,12 +1616,8 @@ export class HotelRegistryEntriesService {
     group: IKnownPropertyComplexGroup,
   ): IHotelRegistryEntry[] {
     return entries.slice().sort((left, right) => {
-      const leftIndex = group.normalizedMemberNames.indexOf(
-        left.name.normalized,
-      );
-      const rightIndex = group.normalizedMemberNames.indexOf(
-        right.name.normalized,
-      );
+      const leftIndex = this.getKnownPropertyComplexMemberOrder(left, group);
+      const rightIndex = this.getKnownPropertyComplexMemberOrder(right, group);
 
       if (leftIndex !== rightIndex) {
         return leftIndex - rightIndex;
@@ -1605,6 +1625,15 @@ export class HotelRegistryEntriesService {
 
       return left.registryKey.localeCompare(right.registryKey);
     });
+  }
+
+  private getKnownPropertyComplexMemberOrder(
+    entry: IHotelRegistryEntry,
+    group: IKnownPropertyComplexGroup,
+  ): number {
+    return this.buildKnownPropertyComplexMemberNames(group).indexOf(
+      entry.name.normalized,
+    );
   }
 
   private sortNumericSuffixArtifactEntries(
