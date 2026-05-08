@@ -4,6 +4,7 @@ import { CANONICAL_HOTEL_KIND } from '../../canonical-hotel-candidates/constants
 import { CANONICAL_HOTEL_PROCESSING_ACTION } from '../constants/canonical-hotel-processing-action.enum';
 import { CANONICAL_HOTEL_REVIEW_REASON } from '../constants/canonical-hotel-review-reason.enum';
 import { CANONICAL_HOTEL_STATUS } from '../constants/canonical-hotel-status.enum';
+import { CanonicalHotelCanonicalNameNotUniqueError } from '../errors/canonical-hotel-canonical-name-not-unique.error';
 import { ICanonicalHotel } from '../types/canonical-hotel.interface';
 import { CanonicalHotelsService } from './canonical-hotels.service';
 import { HotelDeclaredWebPresenceService } from './hotel-declared-web-presence.service';
@@ -213,6 +214,67 @@ describe('CanonicalHotelsService', () => {
       'chv1|single_property|PINE VIEW BOUTIQUE|LIMASSOL|SAITTAS|4748|1 PINE VIEW ROAD',
     );
   });
+
+  it('finds a canonical hotel by id regardless of status', async () => {
+    const duplicateHotel = buildCanonicalHotelFixture({
+      _id: new Types.ObjectId('69f88432878f7fca1f7e0c16'),
+      status: CANONICAL_HOTEL_STATUS.DUPLICATE,
+    });
+    const model = new InMemoryCanonicalHotelModel([duplicateHotel]);
+    const service = new CanonicalHotelsService(
+      model,
+      new HotelDeclaredWebPresenceService(),
+    );
+
+    const result = await service.findById(duplicateHotel._id.toString());
+
+    expect(result?._id.equals(duplicateHotel._id)).toBe(true);
+  });
+
+  it('returns null when canonical hotel id is invalid', async () => {
+    const model = new InMemoryCanonicalHotelModel([]);
+    const service = new CanonicalHotelsService(
+      model,
+      new HotelDeclaredWebPresenceService(),
+    );
+
+    await expect(service.findById('not-an-id')).resolves.toBeNull();
+  });
+
+  it('finds a unique canonical hotel by canonical name', async () => {
+    const hotel = buildCanonicalHotelFixture({
+      canonicalName: 'TSOKKOS GARDENS',
+    });
+    const model = new InMemoryCanonicalHotelModel([hotel]);
+    const service = new CanonicalHotelsService(
+      model,
+      new HotelDeclaredWebPresenceService(),
+    );
+
+    const result = await service.findUniqueByCanonicalName('TSOKKOS GARDENS');
+
+    expect(result?._id.equals(hotel._id)).toBe(true);
+  });
+
+  it('rejects duplicate canonical name lookup results', async () => {
+    const firstHotel = buildCanonicalHotelFixture({
+      _id: new Types.ObjectId('69f88431878f7fca1f7e0bec'),
+      canonicalName: 'TSOKKOS GARDENS',
+    });
+    const secondHotel = buildCanonicalHotelFixture({
+      _id: new Types.ObjectId('69f88432878f7fca1f7e0c16'),
+      canonicalName: 'TSOKKOS GARDENS',
+    });
+    const model = new InMemoryCanonicalHotelModel([firstHotel, secondHotel]);
+    const service = new CanonicalHotelsService(
+      model,
+      new HotelDeclaredWebPresenceService(),
+    );
+
+    await expect(
+      service.findUniqueByCanonicalName('TSOKKOS GARDENS'),
+    ).rejects.toBeInstanceOf(CanonicalHotelCanonicalNameNotUniqueError);
+  });
 });
 
 function buildCandidateFixture(
@@ -357,6 +419,15 @@ class InMemoryCanonicalHotelModel {
             ({ canonicalKey }) => canonicalKey === filter.canonicalKey,
           ) ?? null,
         ),
+    };
+  }
+
+  findById(id: Types.ObjectId): {
+    exec: () => Promise<ICanonicalHotel | null>;
+  } {
+    return {
+      exec: (): Promise<ICanonicalHotel | null> =>
+        Promise.resolve(this.rows.find(({ _id }) => _id.equals(id)) ?? null),
     };
   }
 

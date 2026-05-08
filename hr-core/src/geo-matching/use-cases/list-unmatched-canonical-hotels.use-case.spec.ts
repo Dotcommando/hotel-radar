@@ -17,12 +17,25 @@ import { AutoMatchHotelGeoCandidatesUseCase } from './auto-match-hotel-geo-candi
 import { ListUnmatchedCanonicalHotelsUseCase } from './list-unmatched-canonical-hotels.use-case';
 
 describe('ListUnmatchedCanonicalHotelsUseCase', () => {
-  it('returns canonical hotels without merged candidates and includes suggestions', async () => {
-    const matchedHotel = buildCanonicalHotelFixture({
+  it('returns active canonical hotels without geo that have suggestions', async () => {
+    const hotelWithGeo = buildCanonicalHotelFixture({
       _id: new Types.ObjectId('69f88430878f7fca1f7e0ac6'),
-      canonicalName: 'MATCHED HOTEL',
+      canonicalName: 'ALMOND',
+      contacts: {
+        domains: ['almond.com.cy'],
+        emails: ['info@almond.com.cy'],
+        phones: ['+35722879191'],
+        websites: ['https://almond.com.cy'],
+      },
+      geo: {
+        point: {
+          coordinates: [34.0116723, 35.0542236],
+          type: 'Point',
+        },
+        source: 'manual',
+      },
     });
-    const unmatchedHotel = buildCanonicalHotelFixture({
+    const hotelWithoutGeoAndSuggestion = buildCanonicalHotelFixture({
       _id: new Types.ObjectId('69f88430878f7fca1f7e0ac8'),
       canonicalName: 'NICOLAS COLOR',
       contacts: {
@@ -31,11 +44,6 @@ describe('ListUnmatchedCanonicalHotelsUseCase', () => {
         phones: ['+35723721988'],
         websites: ['https://nicholas.com.cy'],
       },
-    });
-    const matchedCandidate = buildHotelGeoCandidateFixture({
-      canonicalHotelId: matchedHotel._id,
-      matchStatus: HOTEL_GEO_CANDIDATE_MATCH_STATUS.AUTO_MATCHED,
-      name: 'Matched Hotel',
     });
     const suggestedCandidate = buildHotelGeoCandidateFixture({
       _id: new Types.ObjectId('69fae6928833ac8ce429d21d'),
@@ -46,9 +54,26 @@ describe('ListUnmatchedCanonicalHotelsUseCase', () => {
         tourism: 'hotel',
       },
     });
+    const geoHotelSuggestedCandidate = buildHotelGeoCandidateFixture({
+      _id: new Types.ObjectId('69fae6928833ac8ce429d21e'),
+      name: 'Almond Business Hotel',
+      sourceProperties: {
+        name: 'Almond Business Hotel',
+        phone: '+357 22 879191',
+        tourism: 'hotel',
+      },
+    });
+    const hotelWithoutGeoAndNoSuggestion = buildCanonicalHotelFixture({
+      _id: new Types.ObjectId('69f88430878f7fca1f7e0ac9'),
+      canonicalName: 'UNSUGGESTED HOTEL',
+    });
     const repository = new InMemoryGeoHotelMatchingRepository(
-      [matchedHotel, unmatchedHotel],
-      [matchedCandidate, suggestedCandidate],
+      [
+        hotelWithGeo,
+        hotelWithoutGeoAndSuggestion,
+        hotelWithoutGeoAndNoSuggestion,
+      ],
+      [suggestedCandidate, geoHotelSuggestedCandidate],
     );
     const useCase = new ListUnmatchedCanonicalHotelsUseCase(
       repository,
@@ -61,7 +86,7 @@ describe('ListUnmatchedCanonicalHotelsUseCase', () => {
 
     expect(result.total).toBe(1);
     expect(result.items[0].canonicalHotel._id).toBe(
-      unmatchedHotel._id.toString(),
+      hotelWithoutGeoAndSuggestion._id.toString(),
     );
     expect(result.items[0].suggestions).toHaveLength(1);
     expect(result.items[0].suggestions[0]).toMatchObject({
@@ -70,14 +95,21 @@ describe('ListUnmatchedCanonicalHotelsUseCase', () => {
     });
   });
 
-  it('can skip suggestion calculation', async () => {
+  it('ignores includeSuggestions=false because suggestions are required', async () => {
     const hotel = buildCanonicalHotelFixture({
       canonicalName: 'NICOLAS COLOR',
+      contacts: {
+        domains: ['nicholas.com.cy'],
+        emails: ['info@nicholas.com.cy'],
+        phones: ['+35723721988'],
+        websites: ['https://nicholas.com.cy'],
+      },
     });
     const candidate = buildHotelGeoCandidateFixture({
       name: 'Nicolas Color',
       sourceProperties: {
         name: 'Nicolas Color',
+        phone: '+357 23 721988',
         tourism: 'hotel',
       },
     });
@@ -95,27 +127,88 @@ describe('ListUnmatchedCanonicalHotelsUseCase', () => {
     });
 
     expect(result.total).toBe(1);
-    expect(result.items[0].suggestions).toEqual([]);
+    expect(result.items[0].suggestions).toHaveLength(1);
   });
 
-  it('does not return duplicate or permanently closed canonical hotels', async () => {
+  it('includes review suggestions', async () => {
+    const firstHotel = buildCanonicalHotelFixture({
+      _id: new Types.ObjectId('69f88430878f7fca1f7e0ac8'),
+      canonicalName: 'NICOLAS COLOR',
+      contacts: {
+        domains: ['nicholas.com.cy'],
+        emails: ['info@nicholas.com.cy'],
+        phones: ['+35723721988'],
+        websites: ['https://nicholas.com.cy'],
+      },
+    });
+    const secondHotel = buildCanonicalHotelFixture({
+      _id: new Types.ObjectId('69f88430878f7fca1f7e0ac9'),
+      canonicalName: 'NICOLAS COLOR ANNEX',
+      contacts: {
+        domains: ['nicholas.com.cy'],
+        emails: ['info@nicholas.com.cy'],
+        phones: ['+35723721988'],
+        websites: ['https://nicholas.com.cy'],
+      },
+    });
+    const candidate = buildHotelGeoCandidateFixture({
+      name: 'Nicolas Color',
+      sourceProperties: {
+        name: 'Nicolas Color',
+        phone: '+357 23 721988',
+        tourism: 'hotel',
+      },
+    });
+    const repository = new InMemoryGeoHotelMatchingRepository(
+      [firstHotel, secondHotel],
+      [candidate],
+    );
+    const useCase = new ListUnmatchedCanonicalHotelsUseCase(
+      repository,
+      new AutoMatchHotelGeoCandidatesUseCase(repository),
+    );
+
+    const result = await useCase.execute();
+
+    expect(result.total).toBe(1);
+    expect(result.items[0].canonicalHotel._id).toBe(firstHotel._id.toString());
+    expect(result.items[0].suggestions[0].action).toBe(
+      GEO_MATCH_ACTION.NEEDS_REVIEW,
+    );
+  });
+
+  it('does not return duplicate or permanently closed canonical hotels with suggestions', async () => {
     const activeHotel = buildCanonicalHotelFixture({
       _id: new Types.ObjectId('69f88430878f7fca1f7e0ac8'),
-      canonicalName: 'ACTIVE HOTEL',
+      canonicalName: 'NICOLAS COLOR',
+      contacts: {
+        domains: ['nicholas.com.cy'],
+        emails: ['info@nicholas.com.cy'],
+        phones: ['+35723721988'],
+        websites: ['https://nicholas.com.cy'],
+      },
     });
     const duplicateHotel = buildCanonicalHotelFixture({
       _id: new Types.ObjectId('69f88430878f7fca1f7e0ac9'),
-      canonicalName: 'DUPLICATE HOTEL',
+      canonicalName: 'NICOLAS COLOR DUPLICATE',
       status: CANONICAL_HOTEL_STATUS.DUPLICATE,
     });
     const closedHotel = buildCanonicalHotelFixture({
       _id: new Types.ObjectId('69f88430878f7fca1f7e0aca'),
-      canonicalName: 'CLOSED HOTEL',
+      canonicalName: 'NICOLAS COLOR CLOSED',
       status: CANONICAL_HOTEL_STATUS.PERMANENTLY_CLOSED,
+    });
+    const candidate = buildHotelGeoCandidateFixture({
+      name: 'Nicolas Color',
+      sourceProperties: {
+        name: 'Nicolas Color',
+        phone: '+357 23 721988',
+        tourism: 'hotel',
+      },
     });
     const repository = new InMemoryGeoHotelMatchingRepository(
       [activeHotel, duplicateHotel, closedHotel],
-      [],
+      [candidate],
     );
     const useCase = new ListUnmatchedCanonicalHotelsUseCase(
       repository,
@@ -123,7 +216,7 @@ describe('ListUnmatchedCanonicalHotelsUseCase', () => {
     );
 
     const result = await useCase.execute({
-      includeSuggestions: false,
+      includeSuggestions: true,
     });
 
     expect(result.total).toBe(1);

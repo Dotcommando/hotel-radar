@@ -22,23 +22,19 @@ export class ListUnmatchedCanonicalHotelsUseCase {
     const limit = this.parsePositiveInteger(query.limit, 50);
     const offset = this.parseNonNegativeInteger(query.offset, 0);
     const suggestionLimit = this.parsePositiveInteger(query.suggestionLimit, 5);
-    const includeSuggestions = this.parseBoolean(
-      query.includeSuggestions,
-      true,
-    );
-    const [hotels, matchedCanonicalHotelIds] = await Promise.all([
+    const [hotels, suggestionsByHotelId] = await Promise.all([
       this.repository.listCanonicalHotelsForGeoMatching(),
-      this.repository.listCanonicalHotelIdsWithMergedGeoCandidates(),
+      this.buildSuggestionsByHotelId(),
     ]);
-    const matchedIdSet = new Set(matchedCanonicalHotelIds);
-    const unmatchedHotels = hotels.filter(
-      (hotel) =>
+    const unmatchedHotels = hotels.filter((hotel) => {
+      const suggestions = suggestionsByHotelId.get(hotel._id.toString()) ?? [];
+
+      return (
         hotel.status === CANONICAL_HOTEL_STATUS.ACTIVE &&
-        !matchedIdSet.has(hotel._id.toString()),
-    );
-    const suggestionsByHotelId = includeSuggestions
-      ? await this.buildSuggestionsByHotelId()
-      : new Map<string, IAutoMatchHotelGeoCandidateResultItem[]>();
+        hotel.geo.point === null &&
+        suggestions.length > 0
+      );
+    });
     const pagedHotels = unmatchedHotels.slice(offset, offset + limit);
 
     return {
@@ -82,17 +78,6 @@ export class ListUnmatchedCanonicalHotelsUseCase {
     }
 
     return result;
-  }
-
-  private parseBoolean(
-    value: boolean | string | undefined,
-    defaultValue: boolean,
-  ): boolean {
-    if (value === undefined) {
-      return defaultValue;
-    }
-
-    return value === true || value === 'true';
   }
 
   private parsePositiveInteger(

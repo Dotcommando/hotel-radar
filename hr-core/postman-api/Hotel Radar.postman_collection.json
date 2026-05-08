@@ -331,6 +331,65 @@
       ]
     },
     {
+      "name": "Canonical Hotels",
+      "item": [
+        {
+          "name": "Data. Canonical hotel by query Id",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{hrCoreBaseUrl}}/canonical-hotels/by-id?id={{canonicalHotelId}}",
+              "host": [
+                "{{hrCoreBaseUrl}}"
+              ],
+              "path": [
+                "canonical-hotels",
+                "by-id"
+              ],
+              "query": [
+                {
+                  "key": "id",
+                  "value": "{{canonicalHotelId}}"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Data. Canonical hotel by canonical name",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{hrCoreBaseUrl}}/canonical-hotels/by-canonical-name?canonicalName={{canonicalName}}",
+              "host": [
+                "{{hrCoreBaseUrl}}"
+              ],
+              "path": [
+                "canonical-hotels",
+                "by-canonical-name"
+              ],
+              "query": [
+                {
+                  "key": "canonicalName",
+                  "value": "{{canonicalName}}"
+                }
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
       "name": "Geo",
       "item": [
         {
@@ -926,6 +985,11 @@
     },
     {
       "key": "canonicalHotelId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "canonicalName",
       "value": "",
       "type": "string"
     }

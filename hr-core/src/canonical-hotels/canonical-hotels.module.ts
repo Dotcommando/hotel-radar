@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { MongooseModule } from '@nestjs/mongoose';
+import { CanonicalHotelsController } from './canonical-hotels.controller';
 import { CANONICAL_HOTEL_MODEL_NAME } from './constants/canonical-hotel-model-name.constant';
 import { CANONICAL_HOTELS_COLLECTION_NAME } from './constants/canonical-hotels-collection-name.constant';
 import { canonicalHotelSchema } from './schemas/canonical-hotel.schema';
@@ -16,6 +17,7 @@ import { HotelDeclaredWebPresenceService } from './services/hotel-declared-web-p
       },
     ]),
   ],
+  controllers: [CanonicalHotelsController],
   providers: [CanonicalHotelsService, HotelDeclaredWebPresenceService],
   exports: [CanonicalHotelsService],
 })

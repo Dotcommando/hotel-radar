@@ -12,6 +12,7 @@ import { CANONICAL_HOTEL_MODEL_NAME } from '../constants/canonical-hotel-model-n
 import { CANONICAL_HOTEL_PROCESSING_ACTION } from '../constants/canonical-hotel-processing-action.enum';
 import { CANONICAL_HOTEL_REVIEW_REASON } from '../constants/canonical-hotel-review-reason.enum';
 import { CANONICAL_HOTEL_STATUS } from '../constants/canonical-hotel-status.enum';
+import { CanonicalHotelCanonicalNameNotUniqueError } from '../errors/canonical-hotel-canonical-name-not-unique.error';
 import {
   IApplyCanonicalHotelCandidateResult,
   ICanonicalHotelCandidateReview,
@@ -33,6 +34,9 @@ interface ICanonicalHotelModel {
   find: (
     filter: ICanonicalHotelFindFilter,
   ) => ICanonicalHotelQuery<ICanonicalHotel[]>;
+  findById: (
+    id: Types.ObjectId,
+  ) => ICanonicalHotelQuery<ICanonicalHotel | null>;
   findOne: (
     filter: Partial<Pick<ICanonicalHotel, 'canonicalKey'>>,
   ) => ICanonicalHotelQuery<ICanonicalHotel | null>;
@@ -58,6 +62,30 @@ export class CanonicalHotelsService {
     private readonly canonicalHotelModel: ICanonicalHotelModel,
     private readonly webPresenceService: HotelDeclaredWebPresenceService,
   ) {}
+
+  async findById(id: string): Promise<ICanonicalHotel | null> {
+    if (!Types.ObjectId.isValid(id)) {
+      return null;
+    }
+
+    return this.canonicalHotelModel.findById(new Types.ObjectId(id)).exec();
+  }
+
+  async findUniqueByCanonicalName(
+    canonicalName: string,
+  ): Promise<ICanonicalHotel | null> {
+    const hotels = await this.canonicalHotelModel
+      .find({
+        canonicalName,
+      })
+      .exec();
+
+    if (hotels.length > 1) {
+      throw new CanonicalHotelCanonicalNameNotUniqueError(canonicalName);
+    }
+
+    return hotels[0] ?? null;
+  }
 
   async applyCandidate(
     candidate: ICanonicalHotelCandidate,
