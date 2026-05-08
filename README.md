@@ -62,6 +62,9 @@ In this mode:
 - `MONGO_INITDB_ROOT_USERNAME`
 - `MONGO_INITDB_ROOT_PASSWORD`
 - `MONGO_INITDB_DATABASE`
+- `MONGODB_BACKUP_DIRECTORY_PATH`
+- `MONGODB_BACKUP_HOST`
+- `MONGODB_BACKUP_PORT`
 - `HR_CORE_ACTIVE_SLOT`
 - `APIFY_TOKEN`
 - `APIFY_ACTOR_ID`
@@ -74,6 +77,27 @@ In this mode:
 - `GOV_CY_PDF_PARSING_CACHE_TIME_MS`
 
 `.env.example` contains examples for all of them.
+
+## MongoDB Backups
+
+Create a full dump of the configured MongoDB database:
+
+```bash
+./scripts/mongodb-backup.sh
+```
+
+The script reads MongoDB credentials and database name from `.env`:
+
+```env
+MONGO_INITDB_ROOT_USERNAME=...
+MONGO_INITDB_ROOT_PASSWORD=...
+MONGO_INITDB_DATABASE=...
+MONGODB_BACKUP_DIRECTORY_PATH=/Users/alphared/Yandex.Disk.localized/Projects/hotel-radar/backups
+MONGODB_BACKUP_HOST=127.0.0.1
+MONGODB_BACKUP_PORT=27777
+```
+
+If `MONGODB_BACKUP_DIRECTORY_PATH` is not set, the default is `/Users/alphared/Yandex.Disk.localized/Projects/hotel-radar/backups`. The directory is created automatically when it does not exist.
 
 ## Slot Routing
 
