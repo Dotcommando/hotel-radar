@@ -10,12 +10,13 @@ import { GEO_SOURCE_DATASET } from '../../geo-import-runs/constants/geo-source-d
 import { GEO_SOURCE_TYPE } from '../../geo-import-runs/constants/geo-source-type.enum';
 import { HOTEL_BEACH_ACCESS_TARGET_POINT_SOURCE } from '../constants/hotel-beach-access-target-point-source.enum';
 import { BeachRoutingTargetPointService } from './beach-routing-target-point.service';
+import { GeoDistanceService } from './geo-distance.service';
 
 describe('BeachRoutingTargetPointService', () => {
   let service: BeachRoutingTargetPointService;
 
   beforeEach(() => {
-    service = new BeachRoutingTargetPointService();
+    service = new BeachRoutingTargetPointService(new GeoDistanceService());
   });
 
   it('uses curated access points before generated geometry candidates', () => {
@@ -84,10 +85,34 @@ describe('BeachRoutingTargetPointService', () => {
       ),
     ).toBe(true);
   });
+
+  it('treats missing accessPoints from aggregate results as an empty array', () => {
+    const beach = buildBeach({
+      geometry: {
+        coordinates: [
+          [33, 35],
+          [33.1, 35.1],
+          [33.2, 35.2],
+        ],
+        type: 'LineString',
+      },
+      geometryKind: BEACH_GEOMETRY_KIND.LINE,
+    });
+
+    const points = service.buildTargetPoints(beach, {
+      coordinates: [33.05, 35.05],
+      type: 'Point',
+    });
+
+    expect(points).toHaveLength(3);
+    expect(points[0].source).toBe(
+      HOTEL_BEACH_ACCESS_TARGET_POINT_SOURCE.GEOMETRY_LINE_SAMPLE,
+    );
+  });
 });
 
 function buildBeach(params: {
-  accessPoints: [];
+  accessPoints?: [];
   geometry?: {
     coordinates: unknown;
     type: string;
@@ -96,7 +121,11 @@ function buildBeach(params: {
 }) {
   return {
     _id: new Types.ObjectId(),
-    accessPoints: params.accessPoints,
+    ...(params.accessPoints === undefined
+      ? {}
+      : {
+          accessPoints: params.accessPoints,
+        }),
     beachType: BEACH_TYPE.UNKNOWN,
     createdAt: new Date('2026-05-08T09:00:00.000Z'),
     geometry:

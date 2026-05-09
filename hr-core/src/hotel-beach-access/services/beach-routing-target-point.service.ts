@@ -8,16 +8,22 @@ import { GeoDistanceService } from './geo-distance.service';
 
 const MAX_TARGET_POINTS = 5;
 
+interface IBeachRoutingTargetSource extends Omit<IBeachProfile, 'accessPoints'> {
+  accessPoints?: IBeachProfile['accessPoints'];
+}
+
 @Injectable()
 export class BeachRoutingTargetPointService {
-  constructor(private readonly geoDistanceService = new GeoDistanceService()) {}
+  constructor(private readonly geoDistanceService: GeoDistanceService) {}
 
   buildTargetPoints(
-    beach: IBeachProfile,
+    beach: IBeachRoutingTargetSource,
     hotelPoint: IGeoPoint,
   ): IHotelBeachAccessTargetPoint[] {
-    if (beach.accessPoints.length > 0) {
-      return beach.accessPoints
+    const accessPoints = beach.accessPoints ?? [];
+
+    if (accessPoints.length > 0) {
+      return accessPoints
         .map((accessPoint) => ({
           label: accessPoint.label,
           point: accessPoint.point,

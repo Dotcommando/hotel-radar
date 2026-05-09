@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { Types } from 'mongoose';
 import { BeachProfilesService } from '../beach-profiles/beach-profiles.service';
 import { IBeachProfile } from '../beach-profiles/types/beach-profile.interface';
@@ -24,6 +24,8 @@ import { IWalkingRouteProvider } from './types/walking-route-provider.interface'
 
 @Injectable()
 export class HotelBeachAccessBatchProcessor {
+  private readonly logger = new Logger(HotelBeachAccessBatchProcessor.name);
+
   constructor(
     private readonly canonicalHotelsService: CanonicalHotelsService,
     private readonly beachProfilesService: BeachProfilesService,
@@ -47,6 +49,10 @@ export class HotelBeachAccessBatchProcessor {
     let failed = 0;
     let skipped = 0;
 
+    this.logger.log(
+      `Processing hotel beach access batch runId=${data.runId} batchNo=${data.batchNo} claimedItems=${items.length}`,
+    );
+
     for (const item of items) {
       try {
         const result = await this.processHotel(
@@ -55,6 +61,9 @@ export class HotelBeachAccessBatchProcessor {
         );
 
         if (result === 'skipped') {
+          this.logger.warn(
+            `Skipping hotel beach access item runId=${data.runId} canonicalHotelId=${item.canonicalHotelId.toString()} reason=inactive_or_missing_geo`,
+          );
           await this.runItemsService.markSkipped(
             item._id,
             'Hotel is no longer active or does not have geo point.',
@@ -64,6 +73,9 @@ export class HotelBeachAccessBatchProcessor {
         }
 
         if (result === 'failed') {
+          this.logger.warn(
+            `Failed hotel beach access item runId=${data.runId} canonicalHotelId=${item.canonicalHotelId.toString()} reason=no_walking_route`,
+          );
           await this.runItemsService.markFailed(
             item._id,
             'No walking route could be calculated.',
@@ -80,6 +92,9 @@ export class HotelBeachAccessBatchProcessor {
             ? error.message
             : 'Unknown hotel beach access processing error';
 
+        this.logger.error(
+          `Failed hotel beach access item runId=${data.runId} canonicalHotelId=${item.canonicalHotelId.toString()} error=${message}`,
+        );
         await this.runItemsService.markFailed(item._id, message);
         failed += 1;
       }
@@ -94,6 +109,9 @@ export class HotelBeachAccessBatchProcessor {
     const pendingCount = await this.runItemsService.countPending(data.runId);
 
     if (pendingCount > 0) {
+      this.logger.log(
+        `Queueing next hotel beach access batch runId=${data.runId} nextBatchNo=${data.batchNo + 1} pendingItems=${pendingCount}`,
+      );
       await this.queueService.addBatch({
         batchNo: data.batchNo + 1,
         batchSize: data.batchSize,
@@ -102,6 +120,9 @@ export class HotelBeachAccessBatchProcessor {
       return;
     }
 
+    this.logger.log(
+      `Completed hotel beach access run runId=${data.runId} processed=${processed} failed=${failed} skipped=${skipped}`,
+    );
     await this.runsService.complete(data.runId);
   }
 
@@ -126,6 +147,14 @@ export class HotelBeachAccessBatchProcessor {
       hotelPoint,
       HOTEL_BEACH_ACCESS_NEAREST_BEACH_LIMIT,
     );
+
+    if (beaches.length === 0) {
+      this.logger.warn(
+        `No active beaches found for hotel beach access runId=${runId} canonicalHotelId=${canonicalHotelId.toString()}`,
+      );
+      return 'failed';
+    }
+
     let computedEdges = 0;
 
     for (const beach of beaches) {
