@@ -5,4 +5,5 @@ export interface IHotelProcessingBatchJobData {
   stage: HOTEL_PROCESSING_STAGE;
   batchNo: number;
   batchSize: number;
+  datasetVersion?: number;
 }

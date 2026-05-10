@@ -19,6 +19,7 @@ export interface IHotelBeachAccessEdge {
   computedAt: Date;
   runId: string;
   algorithmVersion: string;
+  datasetVersion: number;
   createdAt: Date;
   updatedAt: Date;
 }

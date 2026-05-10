@@ -23,6 +23,7 @@ export interface IBeachProfile {
   accessPoints: IBeachAccessPoint[];
   quality: IBeachProfileQuality;
   lifecycle: IBeachProfileLifecycle;
+  datasetVersion: number;
   createdAt: Date;
   updatedAt: Date;
 }

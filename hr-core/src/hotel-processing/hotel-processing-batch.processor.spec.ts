@@ -8,6 +8,7 @@ import { ICanonicalHotelCandidate } from '../canonical-hotel-candidates/types/ca
 import { CANONICAL_HOTEL_PROCESSING_ACTION } from '../canonical-hotels/constants/canonical-hotel-processing-action.enum';
 import { CANONICAL_HOTEL_REVIEW_REASON } from '../canonical-hotels/constants/canonical-hotel-review-reason.enum';
 import { CanonicalHotelsService } from '../canonical-hotels/services/canonical-hotels.service';
+import { DataVersioningService } from '../data-versioning/data-versioning.service';
 import { HotelRegistryEntriesService } from '../hotel-registry-entries/hotel-registry-entries.service';
 import { HOTEL_REGISTRY_ENTRY_STATUS } from '../hotel-registry-entries/constants/hotel-registry-entry-status.enum';
 import { IHotelRegistryEntry } from '../hotel-registry-entries/types/hotel-registry-entry.interface';
@@ -143,8 +144,13 @@ interface ICanonicalHotelsServiceMock {
         resolvedAt: Date | null;
       } | null;
     }>,
-    [ICanonicalHotelCandidate]
+    [ICanonicalHotelCandidate, number]
   >;
+  markAllWithDatasetVersion: jest.Mock<Promise<void>, [number]>;
+}
+
+interface IDataVersioningServiceMock {
+  publishDatasetVersion: jest.Mock<Promise<void>, [unknown]>;
 }
 
 function buildRegistryEntry(
@@ -246,6 +252,7 @@ describe('HotelProcessingBatchProcessor registry-to-candidates', () => {
   let hotelProcessingQueueService: IHotelProcessingQueueServiceMock;
   let canonicalHotelCandidatesService: ICanonicalHotelCandidatesServiceMock;
   let canonicalHotelsService: ICanonicalHotelsServiceMock;
+  let dataVersioningService: IDataVersioningServiceMock;
   let processor: HotelProcessingBatchProcessor;
 
   beforeEach(async () => {
@@ -288,6 +295,10 @@ describe('HotelProcessingBatchProcessor registry-to-candidates', () => {
     };
     canonicalHotelsService = {
       applyCandidate: jest.fn(),
+      markAllWithDatasetVersion: jest.fn(),
+    };
+    dataVersioningService = {
+      publishDatasetVersion: jest.fn(),
     };
     hotelRegistryEntriesService.readShadowAggregateNumericSuffixGroup.mockResolvedValue(
       null,
@@ -318,6 +329,10 @@ describe('HotelProcessingBatchProcessor registry-to-candidates', () => {
         {
           provide: CanonicalHotelsService,
           useValue: canonicalHotelsService,
+        },
+        {
+          provide: DataVersioningService,
+          useValue: dataVersioningService,
         },
       ],
     }).compile();
@@ -877,12 +892,14 @@ describe('HotelProcessingBatchProcessor registry-to-candidates', () => {
     await processor.processCandidatesToCanonicalBatch({
       batchNo: 1,
       batchSize: 50,
+      datasetVersion: 2,
       runId: 'run-1',
       stage: HOTEL_PROCESSING_STAGE.CANDIDATES_TO_CANONICAL,
     });
 
     expect(canonicalHotelsService.applyCandidate).toHaveBeenCalledWith(
       candidate,
+      2,
     );
     expect(
       canonicalHotelCandidatesService.markCanonicalProcessed,
@@ -896,6 +913,9 @@ describe('HotelProcessingBatchProcessor registry-to-candidates', () => {
       'run-1',
       1,
       0,
+    );
+    expect(canonicalHotelsService.markAllWithDatasetVersion).toHaveBeenCalledWith(
+      2,
     );
     expect(hotelProcessingRunsService.complete).toHaveBeenCalledWith('run-1');
   });
@@ -925,6 +945,7 @@ describe('HotelProcessingBatchProcessor registry-to-candidates', () => {
     await processor.processCandidatesToCanonicalBatch({
       batchNo: 1,
       batchSize: 50,
+      datasetVersion: 2,
       runId: 'run-1',
       stage: HOTEL_PROCESSING_STAGE.CANDIDATES_TO_CANONICAL,
     });

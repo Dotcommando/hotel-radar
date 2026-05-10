@@ -2,6 +2,7 @@ import { HOTEL_PROCESSING_BATCH_SIZE } from '../constants/hotel-processing-defau
 import { HOTEL_PROCESSING_RUN_STATUS } from '../constants/hotel-processing-run-status.enum';
 import { HOTEL_PROCESSING_STAGE } from '../constants/hotel-processing-stage.enum';
 import { HOTEL_PROCESSING_STATUS } from '../constants/hotel-processing-status.enum';
+import { VERSIONED_DATASET } from '../../data-versioning/constants/versioned-dataset.enum';
 import { HotelProcessingActiveRunExistsError } from '../errors/hotel-processing-active-run-exists.error';
 import { HotelProcessingNoPendingSourceDocumentsError } from '../errors/hotel-processing-no-pending-source-documents.error';
 import { StartCandidatesToCanonicalRunUseCase } from './start-candidates-to-canonical-run.use-case';
@@ -40,6 +41,19 @@ interface IHotelProcessingQueueServiceMock {
         stage: HOTEL_PROCESSING_STAGE;
         batchNo: number;
         batchSize: number;
+        datasetVersion: number;
+      },
+    ]
+  >;
+}
+
+interface IDataVersioningServiceMock {
+  reserveNextDatasetVersion: jest.Mock<
+    Promise<number>,
+    [
+      {
+        dataset: VERSIONED_DATASET;
+        sourceRunId: string;
       },
     ]
   >;
@@ -49,6 +63,7 @@ describe('StartCandidatesToCanonicalRunUseCase', () => {
   let canonicalHotelCandidatesService: ICanonicalHotelCandidatesServiceMock;
   let hotelProcessingRunsService: IHotelProcessingRunsServiceMock;
   let hotelProcessingQueueService: IHotelProcessingQueueServiceMock;
+  let dataVersioningService: IDataVersioningServiceMock;
   let useCase: StartCandidatesToCanonicalRunUseCase;
 
   beforeEach(() => {
@@ -67,10 +82,14 @@ describe('StartCandidatesToCanonicalRunUseCase', () => {
     hotelProcessingQueueService = {
       addCandidatesToCanonicalBatch: jest.fn(),
     };
+    dataVersioningService = {
+      reserveNextDatasetVersion: jest.fn(),
+    };
     useCase = new StartCandidatesToCanonicalRunUseCase(
       canonicalHotelCandidatesService,
       hotelProcessingRunsService,
       hotelProcessingQueueService,
+      dataVersioningService,
     );
   });
 
@@ -90,6 +109,7 @@ describe('StartCandidatesToCanonicalRunUseCase', () => {
       746,
     );
     hotelProcessingRunsService.createQueuedRun.mockResolvedValue({});
+    dataVersioningService.reserveNextDatasetVersion.mockResolvedValue(2);
     hotelProcessingQueueService.addCandidatesToCanonicalBatch.mockResolvedValue();
 
     const result = await useCase.execute();
@@ -111,6 +131,7 @@ describe('StartCandidatesToCanonicalRunUseCase', () => {
     ).toHaveBeenCalledWith({
       batchNo: 1,
       batchSize: HOTEL_PROCESSING_BATCH_SIZE,
+      datasetVersion: 2,
       runId: '2026-05-04T08-00-00-candidates-to-canonical',
       stage: HOTEL_PROCESSING_STAGE.CANDIDATES_TO_CANONICAL,
     });
@@ -175,6 +196,7 @@ describe('StartCandidatesToCanonicalRunUseCase', () => {
       57,
     );
     hotelProcessingRunsService.createQueuedRun.mockResolvedValue({});
+    dataVersioningService.reserveNextDatasetVersion.mockResolvedValue(3);
     hotelProcessingQueueService.addCandidatesToCanonicalBatch.mockResolvedValue();
 
     const result = await useCase.execute({

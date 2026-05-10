@@ -2,6 +2,8 @@ import { Injectable } from '@nestjs/common';
 import { CanonicalHotelCandidatesService } from '../canonical-hotel-candidates/canonical-hotel-candidates.service';
 import { CANONICAL_HOTEL_PROCESSING_ACTION } from '../canonical-hotels/constants/canonical-hotel-processing-action.enum';
 import { CanonicalHotelsService } from '../canonical-hotels/services/canonical-hotels.service';
+import { VERSIONED_DATASET } from '../data-versioning/constants/versioned-dataset.enum';
+import { DataVersioningService } from '../data-versioning/data-versioning.service';
 import { HotelRegistryEntriesService } from '../hotel-registry-entries/hotel-registry-entries.service';
 import { HOTEL_REGISTRY_ENTRY_STATUS } from '../hotel-registry-entries/constants/hotel-registry-entry-status.enum';
 import { RawHotelsService } from '../raw-hotels/raw-hotels.service';
@@ -20,6 +22,7 @@ export class HotelProcessingBatchProcessor {
     private readonly hotelProcessingQueueService: HotelProcessingQueueService,
     private readonly canonicalHotelCandidatesService: CanonicalHotelCandidatesService,
     private readonly canonicalHotelsService: CanonicalHotelsService,
+    private readonly dataVersioningService: DataVersioningService,
   ) {}
 
   async processRawToRegistryBatch(
@@ -275,6 +278,10 @@ export class HotelProcessingBatchProcessor {
       throw new Error(`Unsupported hotel processing stage: ${data.stage}`);
     }
 
+    if (data.datasetVersion === undefined) {
+      throw new Error('Canonical hotels dataset version is missing.');
+    }
+
     await this.hotelProcessingRunsService.markRunning(data.runId, data.batchNo);
 
     const candidates =
@@ -290,6 +297,7 @@ export class HotelProcessingBatchProcessor {
       try {
         const result = await this.canonicalHotelsService.applyCandidate(
           candidate,
+          data.datasetVersion,
         );
 
         if (
@@ -367,12 +375,20 @@ export class HotelProcessingBatchProcessor {
       await this.hotelProcessingQueueService.addCandidatesToCanonicalBatch({
         batchNo: data.batchNo + 1,
         batchSize: data.batchSize,
+        datasetVersion: data.datasetVersion,
         runId: data.runId,
         stage: data.stage,
       });
       return;
     }
 
+    await this.canonicalHotelsService.markAllWithDatasetVersion(
+      data.datasetVersion,
+    );
+    await this.dataVersioningService.publishDatasetVersion({
+      dataset: VERSIONED_DATASET.CANONICAL_HOTELS,
+      version: data.datasetVersion,
+    });
     await this.hotelProcessingRunsService.complete(data.runId);
   }
 

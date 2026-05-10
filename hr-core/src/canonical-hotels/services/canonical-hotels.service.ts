@@ -48,6 +48,10 @@ interface ICanonicalHotelModel {
     filter: Pick<ICanonicalHotel, '_id'>,
     update: { $set: Partial<ICanonicalHotel> },
   ) => ICanonicalHotelQuery<unknown>;
+  updateMany: (
+    filter: Partial<ICanonicalHotel>,
+    update: { $set: Partial<ICanonicalHotel> },
+  ) => ICanonicalHotelQuery<unknown>;
 }
 
 interface ICanonicalHotelFindFilter {
@@ -128,6 +132,7 @@ export class CanonicalHotelsService {
 
   async applyCandidate(
     candidate: ICanonicalHotelCandidate,
+    datasetVersion: number,
   ): Promise<IApplyCanonicalHotelCandidateResult> {
     if (!hasStrongCanonicalHotelIdentity(candidate)) {
       return this.buildReviewResult(
@@ -145,6 +150,7 @@ export class CanonicalHotelsService {
         ...snapshot,
         _id: new Types.ObjectId(),
         createdAt: snapshot.source.lastCandidateSeenAt,
+        datasetVersion,
         firstSeenAt: snapshot.source.lastCandidateSeenAt,
         geo: {
           point: null,
@@ -187,6 +193,7 @@ export class CanonicalHotelsService {
     const updateFields = factsChanged
       ? this.buildFactUpdateFields(existing, snapshot)
       : this.buildSeenOnlyUpdateFields(snapshot);
+    updateFields.datasetVersion = datasetVersion;
 
     await this.canonicalHotelModel
       .updateOne(
@@ -206,6 +213,19 @@ export class CanonicalHotelsService {
       canonicalHotelId: existing._id,
       review: null,
     };
+  }
+
+  async markAllWithDatasetVersion(datasetVersion: number): Promise<void> {
+    await this.canonicalHotelModel
+      .updateMany(
+        {},
+        {
+          $set: {
+            datasetVersion,
+          },
+        },
+      )
+      .exec();
   }
 
   private async findDeterministicMatches(

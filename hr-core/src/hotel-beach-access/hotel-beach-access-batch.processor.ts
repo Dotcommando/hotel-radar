@@ -5,6 +5,8 @@ import { IBeachProfile } from '../beach-profiles/types/beach-profile.interface';
 import { IBeachProfileWithDistance } from '../beach-profiles/types/beach-profile-with-distance.interface';
 import { CANONICAL_HOTEL_STATUS } from '../canonical-hotels/constants/canonical-hotel-status.enum';
 import { CanonicalHotelsService } from '../canonical-hotels/services/canonical-hotels.service';
+import { VERSIONED_DATASET } from '../data-versioning/constants/versioned-dataset.enum';
+import { DataVersioningService } from '../data-versioning/data-versioning.service';
 import {
   HOTEL_BEACH_ACCESS_ALGORITHM_VERSION,
   HOTEL_BEACH_ACCESS_NEAREST_BEACH_LIMIT,
@@ -36,6 +38,7 @@ export class HotelBeachAccessBatchProcessor {
     private readonly targetPointService: BeachRoutingTargetPointService,
     private readonly routeProvider: StraightLineWalkingRouteProvider,
     private readonly geoDistanceService: GeoDistanceService,
+    private readonly dataVersioningService: DataVersioningService,
   ) {}
 
   async processBatch(data: IHotelBeachAccessBatchJobData): Promise<void> {
@@ -58,6 +61,7 @@ export class HotelBeachAccessBatchProcessor {
         const result = await this.processHotel(
           data.runId,
           item.canonicalHotelId,
+          data.datasetVersion,
         );
 
         if (result === 'skipped') {
@@ -115,6 +119,7 @@ export class HotelBeachAccessBatchProcessor {
       await this.queueService.addBatch({
         batchNo: data.batchNo + 1,
         batchSize: data.batchSize,
+        datasetVersion: data.datasetVersion,
         runId: data.runId,
       });
       return;
@@ -123,12 +128,17 @@ export class HotelBeachAccessBatchProcessor {
     this.logger.log(
       `Completed hotel beach access run runId=${data.runId} processed=${processed} failed=${failed} skipped=${skipped}`,
     );
+    await this.dataVersioningService.publishDatasetVersion({
+      dataset: VERSIONED_DATASET.HOTEL_BEACH_ACCESS_EDGES,
+      version: data.datasetVersion,
+    });
     await this.runsService.complete(data.runId);
   }
 
   private async processHotel(
     runId: string,
     canonicalHotelId: Types.ObjectId,
+    datasetVersion: number,
   ): Promise<'computed' | 'failed' | 'skipped'> {
     const hotel = await this.canonicalHotelsService.findById(
       canonicalHotelId.toString(),
@@ -177,6 +187,7 @@ export class HotelBeachAccessBatchProcessor {
         bestRoute,
         canonicalHotelId,
         computedAt: now,
+        datasetVersion,
         error: bestRoute === null ? 'No walking route found.' : null,
         hotelPoint,
         routeAlternatives: routes.slice(1, 3),

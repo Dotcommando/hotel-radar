@@ -1,6 +1,8 @@
 import { Injectable } from '@nestjs/common';
 import { Types } from 'mongoose';
 import { CanonicalHotelsService } from '../../canonical-hotels/services/canonical-hotels.service';
+import { VERSIONED_DATASET } from '../../data-versioning/constants/versioned-dataset.enum';
+import { DataVersioningService } from '../../data-versioning/data-versioning.service';
 import { HOTEL_BEACH_ACCESS_BATCH_SIZE } from '../constants/hotel-beach-access-defaults.constant';
 import { HOTEL_BEACH_ACCESS_RUN_STATUS } from '../constants/hotel-beach-access-run-status.enum';
 import { HotelBeachAccessActiveRunExistsError } from '../errors/hotel-beach-access-active-run-exists.error';
@@ -17,6 +19,7 @@ export class StartHotelBeachAccessRunUseCase {
     private readonly runsService: HotelBeachAccessRunsService,
     private readonly runItemsService: HotelBeachAccessRunItemsService,
     private readonly queueService: HotelBeachAccessQueueService,
+    private readonly dataVersioningService: DataVersioningService,
   ) {}
 
   async execute(): Promise<IStartHotelBeachAccessRunResult> {
@@ -34,6 +37,11 @@ export class StartHotelBeachAccessRunUseCase {
 
     const now = new Date();
     const runId = this.makeRunId(now);
+    const datasetVersion =
+      await this.dataVersioningService.reserveNextDatasetVersion({
+        dataset: VERSIONED_DATASET.HOTEL_BEACH_ACCESS_EDGES,
+        sourceRunId: runId,
+      });
     const [ineligibleHotelsWithoutGeo, hotels] = await Promise.all([
       this.canonicalHotelsService.countActiveWithoutGeo(),
       this.canonicalHotelsService.listActiveWithGeo(),
@@ -50,6 +58,7 @@ export class StartHotelBeachAccessRunUseCase {
     await this.queueService.addBatch({
       batchNo: 1,
       batchSize: HOTEL_BEACH_ACCESS_BATCH_SIZE,
+      datasetVersion,
       runId,
     });
 

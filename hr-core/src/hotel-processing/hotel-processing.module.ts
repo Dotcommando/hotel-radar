@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { MongooseModule } from '@nestjs/mongoose';
 import { CanonicalHotelCandidatesModule } from '../canonical-hotel-candidates/canonical-hotel-candidates.module';
 import { CanonicalHotelsModule } from '../canonical-hotels/canonical-hotels.module';
+import { DataVersioningModule } from '../data-versioning/data-versioning.module';
 import { HotelRegistryEntriesModule } from '../hotel-registry-entries/hotel-registry-entries.module';
 import { RawHotelsModule } from '../raw-hotels/raw-hotels.module';
 import { HOTEL_PROCESSING_RUN_MODEL_NAME } from './constants/hotel-processing-run-model-name.constant';
@@ -23,6 +24,7 @@ import { StartRegistryToCandidatesRunUseCase } from './use-cases/start-registry-
   imports: [
     CanonicalHotelCandidatesModule,
     CanonicalHotelsModule,
+    DataVersioningModule,
     HotelRegistryEntriesModule,
     RawHotelsModule,
     MongooseModule.forFeature([

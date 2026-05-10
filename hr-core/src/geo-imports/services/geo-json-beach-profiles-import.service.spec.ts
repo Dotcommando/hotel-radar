@@ -9,12 +9,19 @@ import { GEO_SOURCE_TYPE } from '../../geo-import-runs/constants/geo-source-type
 import { GeoImportRunsService } from '../../geo-import-runs/geo-import-runs.service';
 import { BEACH_PROFILE_UPSERT_RESULT } from '../../beach-profiles/constants/beach-profile-upsert-result.enum';
 import { BeachProfilesService } from '../../beach-profiles/beach-profiles.service';
+import { VERSIONED_DATASET } from '../../data-versioning/constants/versioned-dataset.enum';
+import { DataVersioningService } from '../../data-versioning/data-versioning.service';
 import { GeoJsonBeachProfilesImportService } from './geo-json-beach-profiles-import.service';
 
 describe('GeoJsonBeachProfilesImportService', () => {
   let beachProfilesService: {
+    markAllWithDatasetVersion: jest.Mock;
     markStaleMissingFromRun: jest.Mock;
     upsertFromOsmOverpassFeature: jest.Mock;
+  };
+  let dataVersioningService: {
+    publishDatasetVersion: jest.Mock;
+    reserveNextDatasetVersion: jest.Mock;
   };
   let geoImportRunsService: {
     createRunningRun: jest.Mock;
@@ -25,8 +32,13 @@ describe('GeoJsonBeachProfilesImportService', () => {
 
   beforeEach(() => {
     beachProfilesService = {
+      markAllWithDatasetVersion: jest.fn(),
       markStaleMissingFromRun: jest.fn(),
       upsertFromOsmOverpassFeature: jest.fn(),
+    };
+    dataVersioningService = {
+      publishDatasetVersion: jest.fn(),
+      reserveNextDatasetVersion: jest.fn(),
     };
     geoImportRunsService = {
       createRunningRun: jest.fn(),
@@ -36,6 +48,7 @@ describe('GeoJsonBeachProfilesImportService', () => {
     service = new GeoJsonBeachProfilesImportService(
       geoImportRunsService as unknown as GeoImportRunsService,
       beachProfilesService as unknown as BeachProfilesService,
+      dataVersioningService as unknown as DataVersioningService,
     );
   });
 
@@ -88,6 +101,7 @@ describe('GeoJsonBeachProfilesImportService', () => {
       _id: runId,
       runId: '2026-05-06T09-10-00-overpass-turbo-beaches',
     });
+    dataVersioningService.reserveNextDatasetVersion.mockResolvedValue(2);
     beachProfilesService.upsertFromOsmOverpassFeature
       .mockResolvedValueOnce(BEACH_PROFILE_UPSERT_RESULT.INSERTED)
       .mockResolvedValueOnce(BEACH_PROFILE_UPSERT_RESULT.UPDATED);
@@ -117,9 +131,25 @@ describe('GeoJsonBeachProfilesImportService', () => {
         sourceType: GEO_SOURCE_TYPE.OSM,
       }),
     );
-    expect(beachProfilesService.upsertFromOsmOverpassFeature).toHaveBeenCalledTimes(
+    expect(
+      beachProfilesService.upsertFromOsmOverpassFeature,
+    ).toHaveBeenCalledTimes(2);
+    expect(
+      dataVersioningService.reserveNextDatasetVersion,
+    ).toHaveBeenCalledWith({
+      dataset: VERSIONED_DATASET.BEACH_PROFILES,
+      sourceRunId: '2026-05-06T09-10-00-overpass-turbo-beaches',
+    });
+    expect(
+      beachProfilesService.upsertFromOsmOverpassFeature,
+    ).toHaveBeenCalledWith(expect.objectContaining({ datasetVersion: 2 }));
+    expect(beachProfilesService.markAllWithDatasetVersion).toHaveBeenCalledWith(
       2,
     );
+    expect(dataVersioningService.publishDatasetVersion).toHaveBeenCalledWith({
+      dataset: VERSIONED_DATASET.BEACH_PROFILES,
+      version: 2,
+    });
     expect(beachProfilesService.markStaleMissingFromRun).toHaveBeenCalledWith(
       runId,
       GEO_SOURCE_TYPE.OSM,

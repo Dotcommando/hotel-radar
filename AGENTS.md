@@ -19,6 +19,25 @@ These instructions apply to the whole repository and all applications inside it.
 - Keep interfaces and other type definitions inside feature-local `types/` directories.
 - Prefer small, explicit modules over shared generic abstractions unless reuse is already proven.
 
+## Data Versioning Rules
+
+- `hr-core` data consumed by other projects must be versioned through dataset versions and public data releases.
+- MongoDB `_id` is the stable identity for persisted public entities. Do not add separate business identity fields such as `hotelId`, `beachId`, or `edgeId` when `_id` already provides stable identity.
+- References between public collections may use fields such as `canonicalHotelId` and `beachProfileId`, but those fields must reference target document `_id` values.
+- Public dataset documents know their own `datasetVersion`; they do not know which public release includes them.
+- `dataset_versions` documents know one dataset name, one dataset version, lifecycle status, source run IDs, metrics, and timestamps. They are not public releases by themselves.
+- `data_releases` documents compose compatible dataset versions into the consumer-facing contract. External projects must depend on `data_releases`, not on "latest" source collection state.
+- The versioned source datasets are `canonical_hotels`, `beach_profiles`, and `hotel_beach_access_edges`.
+- `canonical_hotels.datasetVersion`, `beach_profiles.datasetVersion`, and `hotel_beach_access_edges.datasetVersion` are independent. Do not increment unrelated datasets just because another dataset changed.
+- Dataset versions must be reserved through the data versioning feature before a dataset-producing pipeline writes public data. Do not hardcode runtime writes to `datasetVersion: 1`.
+- Existing data may be bootstrapped as version `1`, but new runtime pipeline output must use the next reserved dataset version.
+- For mutable full datasets such as `canonical_hotels` and `beach_profiles`, a successful pipeline version must represent a complete readable dataset, not only changed documents.
+- For derived edge datasets such as `hotel_beach_access_edges`, the same hotel-beach pair may exist in multiple dataset versions. Unique indexes for edges must include `datasetVersion`.
+- `hotel_beach_access_edges` should store one relationship document that can be queried from either side. Do not create duplicate reverse-direction documents for hotel-to-beach and beach-to-hotel reads.
+- Publication to consumer databases must use the selected `data_releases` document, copy only the component dataset versions declared by that release, drop old public target collections, recreate them, and rebuild consumer indexes.
+- Publication configuration belongs in explicit environment variables such as `DATA_PUBLICATION_MONGODB_URI`, `DATA_PUBLICATION_RELEASE_KEY`, and `DATA_PUBLICATION_RELEASE_VERSION`.
+- Versioning script and publication behavior must be covered with focused tests.
+
 ## TypeScript Rules
 
 ### General

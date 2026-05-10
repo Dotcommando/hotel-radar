@@ -45,6 +45,7 @@ export class BeachProfilesService {
         accessPoints: [],
         beachType: params.beachType,
         createdAt: now,
+        datasetVersion: params.datasetVersion,
         geometry: params.geometry,
         geometryKind: params.geometryKind,
         lifecycle: {
@@ -93,6 +94,7 @@ export class BeachProfilesService {
         importRunId: params.importRunId,
       },
       updatedAt: now,
+      datasetVersion: params.datasetVersion,
     };
 
     if (hashesChanged) {
@@ -118,6 +120,19 @@ export class BeachProfilesService {
     return hashesChanged
       ? BEACH_PROFILE_UPSERT_RESULT.UPDATED
       : BEACH_PROFILE_UPSERT_RESULT.UNCHANGED;
+  }
+
+  async markAllWithDatasetVersion(datasetVersion: number): Promise<void> {
+    await this.beachProfileModel
+      .updateMany(
+        {},
+        {
+          $set: {
+            datasetVersion,
+          },
+        },
+      )
+      .exec();
   }
 
   async markStaleMissingFromRun(
@@ -233,7 +248,10 @@ export class BeachProfilesService {
         [BEACH_TYPE.PEBBLE]: this.readCount(byBeachTypeRows, BEACH_TYPE.PEBBLE),
         [BEACH_TYPE.ROCKY]: this.readCount(byBeachTypeRows, BEACH_TYPE.ROCKY),
         [BEACH_TYPE.SAND]: this.readCount(byBeachTypeRows, BEACH_TYPE.SAND),
-        [BEACH_TYPE.UNKNOWN]: this.readCount(byBeachTypeRows, BEACH_TYPE.UNKNOWN),
+        [BEACH_TYPE.UNKNOWN]: this.readCount(
+          byBeachTypeRows,
+          BEACH_TYPE.UNKNOWN,
+        ),
       },
       byGeometryKind: {
         [BEACH_GEOMETRY_KIND.AREA]: this.readCount(
@@ -350,7 +368,10 @@ export class BeachProfilesService {
     return filter;
   }
 
-  private readCount(rows: IStringCountAggregationResult[], key: string): number {
+  private readCount(
+    rows: IStringCountAggregationResult[],
+    key: string,
+  ): number {
     return rows.find((row) => row._id === key)?.count ?? 0;
   }
 

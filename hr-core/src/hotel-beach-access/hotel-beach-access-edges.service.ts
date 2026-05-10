@@ -21,6 +21,7 @@ export class HotelBeachAccessEdgesService {
         {
           beachProfileId: edge.beachProfileId,
           canonicalHotelId: edge.canonicalHotelId,
+          datasetVersion: edge.datasetVersion,
         },
         {
           $set: {

@@ -1,5 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { CanonicalHotelCandidatesService } from '../../canonical-hotel-candidates/canonical-hotel-candidates.service';
+import { VERSIONED_DATASET } from '../../data-versioning/constants/versioned-dataset.enum';
+import { DataVersioningService } from '../../data-versioning/data-versioning.service';
 import {
   HOTEL_PROCESSING_BATCH_SIZE,
   HOTEL_PROCESSING_STALE_CLAIM_TIMEOUT_MS,
@@ -20,6 +22,7 @@ export class StartCandidatesToCanonicalRunUseCase {
     private readonly canonicalHotelCandidatesService: CanonicalHotelCandidatesService,
     private readonly hotelProcessingRunsService: HotelProcessingRunsService,
     private readonly hotelProcessingQueueService: HotelProcessingQueueService,
+    private readonly dataVersioningService: DataVersioningService,
   ) {}
 
   async execute(
@@ -66,6 +69,11 @@ export class StartCandidatesToCanonicalRunUseCase {
     }
 
     const runId = this.makeRunId(now);
+    const datasetVersion =
+      await this.dataVersioningService.reserveNextDatasetVersion({
+        dataset: VERSIONED_DATASET.CANONICAL_HOTELS,
+        sourceRunId: runId,
+      });
 
     await this.hotelProcessingRunsService.createQueuedRun({
       batchSize: HOTEL_PROCESSING_BATCH_SIZE,
@@ -76,6 +84,7 @@ export class StartCandidatesToCanonicalRunUseCase {
     await this.hotelProcessingQueueService.addCandidatesToCanonicalBatch({
       batchNo: 1,
       batchSize: HOTEL_PROCESSING_BATCH_SIZE,
+      datasetVersion,
       runId,
       stage: HOTEL_PROCESSING_STAGE.CANDIDATES_TO_CANONICAL,
     });

@@ -26,6 +26,7 @@ export interface ICanonicalHotel {
   source: ICanonicalHotelSourceState;
   issues: string[];
   verification: ICanonicalHotelVerification;
+  datasetVersion: number;
   firstSeenAt: Date;
   lastSeenAt: Date;
   createdAt: Date;

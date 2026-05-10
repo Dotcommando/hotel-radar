@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { BeachProfilesModule } from '../beach-profiles/beach-profiles.module';
+import { DataVersioningModule } from '../data-versioning/data-versioning.module';
 import { GeoImportRunsModule } from '../geo-import-runs/geo-import-runs.module';
 import { HotelGeoCandidatesModule } from '../hotel-geo-candidates/hotel-geo-candidates.module';
 import { GeoImportsController } from './geo-imports.controller';
@@ -12,7 +13,12 @@ import { StartOsmOverpassHotelsImportUseCase } from './use-cases/start-osm-overp
 
 @Module({
   controllers: [GeoImportsController],
-  imports: [BeachProfilesModule, GeoImportRunsModule, HotelGeoCandidatesModule],
+  imports: [
+    BeachProfilesModule,
+    DataVersioningModule,
+    GeoImportRunsModule,
+    HotelGeoCandidatesModule,
+  ],
   providers: [
     GeoJsonBeachProfilesImportService,
     GeoJsonHotelCandidatesImportService,

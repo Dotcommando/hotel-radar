@@ -16,4 +16,5 @@ export interface IUpsertOsmOverpassBeachProfile {
   sourceProperties: Record<string, unknown>;
   propertiesHash: string;
   geometryHash: string;
+  datasetVersion: number;
 }

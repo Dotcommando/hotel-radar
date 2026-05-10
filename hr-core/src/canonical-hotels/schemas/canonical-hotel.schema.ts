@@ -296,6 +296,11 @@ export const canonicalHotelSchema = new Schema<ICanonicalHotel>(
       required: true,
       type: Date,
     },
+    datasetVersion: {
+      default: 1,
+      required: true,
+      type: Number,
+    },
     firstSeenAt: {
       required: true,
       type: Date,
@@ -378,4 +383,5 @@ canonicalHotelSchema.index({ 'location.district': 1 });
 canonicalHotelSchema.index({ 'contacts.phones': 1 });
 canonicalHotelSchema.index({ 'contacts.emails': 1 });
 canonicalHotelSchema.index({ 'contacts.domains': 1 });
+canonicalHotelSchema.index({ datasetVersion: 1 });
 canonicalHotelSchema.index({ lastSeenAt: 1 });

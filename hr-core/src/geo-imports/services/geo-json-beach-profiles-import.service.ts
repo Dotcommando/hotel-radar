@@ -8,6 +8,8 @@ import { BEACH_TYPE } from '../../beach-profiles/constants/beach-type.enum';
 import { BeachProfilesService } from '../../beach-profiles/beach-profiles.service';
 import { IBeachGeoJsonGeometry } from '../../beach-profiles/types/beach-geo-json-geometry.interface';
 import { IBeachGeoPoint } from '../../beach-profiles/types/beach-geo-point.interface';
+import { VERSIONED_DATASET } from '../../data-versioning/constants/versioned-dataset.enum';
+import { DataVersioningService } from '../../data-versioning/data-versioning.service';
 import { GEO_IMPORT_KIND } from '../../geo-import-runs/constants/geo-import-kind.enum';
 import { GEO_IMPORT_RUN_STATUS } from '../../geo-import-runs/constants/geo-import-run-status.enum';
 import { GEO_SOURCE_DATASET } from '../../geo-import-runs/constants/geo-source-dataset.enum';
@@ -33,6 +35,7 @@ export class GeoJsonBeachProfilesImportService {
   constructor(
     private readonly geoImportRunsService: GeoImportRunsService,
     private readonly beachProfilesService: BeachProfilesService,
+    private readonly dataVersioningService: DataVersioningService,
   ) {}
 
   async importOsmOverpassBeaches(
@@ -51,6 +54,11 @@ export class GeoJsonBeachProfilesImportService {
       sourceDataset: GEO_SOURCE_DATASET.OVERPASS_TURBO,
       sourceType: GEO_SOURCE_TYPE.OSM,
     });
+    const datasetVersion =
+      await this.dataVersioningService.reserveNextDatasetVersion({
+        dataset: VERSIONED_DATASET.BEACH_PROFILES,
+        sourceRunId: run.runId,
+      });
     const stats = this.buildEmptyStats();
 
     try {
@@ -60,7 +68,11 @@ export class GeoJsonBeachProfilesImportService {
         stats.read += 1;
 
         try {
-          const result = await this.importFeature(run._id, feature);
+          const result = await this.importFeature(
+            run._id,
+            feature,
+            datasetVersion,
+          );
 
           this.incrementUpsertStats(stats, result);
         } catch {
@@ -75,6 +87,11 @@ export class GeoJsonBeachProfilesImportService {
           GEO_SOURCE_DATASET.OVERPASS_TURBO,
         );
 
+      await this.beachProfilesService.markAllWithDatasetVersion(datasetVersion);
+      await this.dataVersioningService.publishDatasetVersion({
+        dataset: VERSIONED_DATASET.BEACH_PROFILES,
+        version: datasetVersion,
+      });
       await this.geoImportRunsService.markCompleted(run._id, stats);
 
       return {
@@ -109,12 +126,14 @@ export class GeoJsonBeachProfilesImportService {
       BeachProfilesService['upsertFromOsmOverpassFeature']
     >[0]['importRunId'],
     feature: IBeachGeoJsonFeature,
+    datasetVersion: number,
   ): Promise<BEACH_PROFILE_UPSERT_RESULT> {
     const sourceId = this.readSourceId(feature);
     const name = this.readStringProperty(feature.properties, 'name');
 
     return this.beachProfilesService.upsertFromOsmOverpassFeature({
       beachType: this.resolveBeachType(feature.properties),
+      datasetVersion,
       geometry: feature.geometry,
       geometryHash: this.hashValue(feature.geometry),
       geometryKind: this.resolveGeometryKind(feature.geometry),
@@ -204,10 +223,10 @@ export class GeoJsonBeachProfilesImportService {
     return BEACH_GEOMETRY_KIND.AREA;
   }
 
-  private resolveBeachType(
-    properties: Record<string, unknown>,
-  ): BEACH_TYPE {
-    const surface = this.normalizeText(this.readStringProperty(properties, 'surface'));
+  private resolveBeachType(properties: Record<string, unknown>): BEACH_TYPE {
+    const surface = this.normalizeText(
+      this.readStringProperty(properties, 'surface'),
+    );
 
     if (surface.includes('SAND')) {
       return BEACH_TYPE.SAND;
@@ -247,7 +266,9 @@ export class GeoJsonBeachProfilesImportService {
     this.collectPositions(geometry.coordinates, positions);
 
     if (positions.length === 0) {
-      throw new Error(`Cannot compute representative point for ${geometry.type}.`);
+      throw new Error(
+        `Cannot compute representative point for ${geometry.type}.`,
+      );
     }
 
     const sums = positions.reduce(
@@ -351,7 +372,9 @@ export class GeoJsonBeachProfilesImportService {
     if (this.isRecord(value)) {
       return `{${Object.keys(value)
         .sort((left, right) => left.localeCompare(right))
-        .map((key) => `${JSON.stringify(key)}:${this.stableStringify(value[key])}`)
+        .map(
+          (key) => `${JSON.stringify(key)}:${this.stableStringify(value[key])}`,
+        )
         .join(',')}}`;
     }
 

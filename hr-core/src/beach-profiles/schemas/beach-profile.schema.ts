@@ -187,6 +187,11 @@ export const beachProfileSchema = new Schema<IBeachProfile>(
       required: true,
       type: Date,
     },
+    datasetVersion: {
+      default: 1,
+      required: true,
+      type: Number,
+    },
     geometry: {
       required: true,
       type: geometrySchema,
@@ -254,6 +259,7 @@ beachProfileSchema.index(
   },
 );
 beachProfileSchema.index({ point: '2dsphere' });
+beachProfileSchema.index({ datasetVersion: 1 });
 beachProfileSchema.index({ geometryKind: 1 });
 beachProfileSchema.index({ normalizedName: 1 });
 beachProfileSchema.index({ 'quality.status': 1, updatedAt: -1 });

@@ -105,6 +105,11 @@ export const hotelBeachAccessEdgeSchema =
         required: true,
         type: Date,
       },
+      datasetVersion: {
+        default: 1,
+        required: true,
+        type: Number,
+      },
       error: {
         default: null,
         required: false,
@@ -158,6 +163,7 @@ hotelBeachAccessEdgeSchema.index(
   {
     beachProfileId: 1,
     canonicalHotelId: 1,
+    datasetVersion: 1,
   },
   {
     unique: true,
@@ -170,4 +176,7 @@ hotelBeachAccessEdgeSchema.index({
 hotelBeachAccessEdgeSchema.index({
   beachProfileId: 1,
   walkingDistanceMeters: 1,
+});
+hotelBeachAccessEdgeSchema.index({
+  datasetVersion: 1,
 });

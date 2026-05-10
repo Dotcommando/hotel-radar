@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { MongooseModule } from '@nestjs/mongoose';
 import { BeachProfilesModule } from '../beach-profiles/beach-profiles.module';
 import { CanonicalHotelsModule } from '../canonical-hotels/canonical-hotels.module';
+import { DataVersioningModule } from '../data-versioning/data-versioning.module';
 import { HOTEL_BEACH_ACCESS_EDGE_MODEL_NAME } from './constants/hotel-beach-access-edge-model-name.constant';
 import { HOTEL_BEACH_ACCESS_EDGES_COLLECTION_NAME } from './constants/hotel-beach-access-edges-collection-name.constant';
 import { HOTEL_BEACH_ACCESS_RUN_ITEM_MODEL_NAME } from './constants/hotel-beach-access-run-item-model-name.constant';
@@ -33,6 +34,7 @@ import { StartHotelBeachAccessRunUseCase } from './use-cases/start-hotel-beach-a
   imports: [
     BeachProfilesModule,
     CanonicalHotelsModule,
+    DataVersioningModule,
     MongooseModule.forFeature([
       {
         collection: HOTEL_BEACH_ACCESS_EDGES_COLLECTION_NAME,

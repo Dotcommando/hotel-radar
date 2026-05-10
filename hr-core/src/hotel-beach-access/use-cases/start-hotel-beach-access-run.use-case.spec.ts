@@ -1,4 +1,5 @@
 import { Types } from 'mongoose';
+import { VERSIONED_DATASET } from '../../data-versioning/constants/versioned-dataset.enum';
 import { HOTEL_BEACH_ACCESS_BATCH_SIZE } from '../constants/hotel-beach-access-defaults.constant';
 import { HOTEL_BEACH_ACCESS_RUN_STATUS } from '../constants/hotel-beach-access-run-status.enum';
 import { HotelBeachAccessActiveRunExistsError } from '../errors/hotel-beach-access-active-run-exists.error';
@@ -42,11 +43,24 @@ interface IHotelBeachAccessQueueServiceMock {
   addBatch: jest.Mock<Promise<void>, [IHotelBeachAccessBatchJobData]>;
 }
 
+interface IDataVersioningServiceMock {
+  reserveNextDatasetVersion: jest.Mock<
+    Promise<number>,
+    [
+      {
+        dataset: VERSIONED_DATASET;
+        sourceRunId: string;
+      },
+    ]
+  >;
+}
+
 describe('StartHotelBeachAccessRunUseCase', () => {
   let canonicalHotelsService: ICanonicalHotelsServiceMock;
   let runsService: IHotelBeachAccessRunsServiceMock;
   let runItemsService: IHotelBeachAccessRunItemsServiceMock;
   let queueService: IHotelBeachAccessQueueServiceMock;
+  let dataVersioningService: IDataVersioningServiceMock;
   let useCase: StartHotelBeachAccessRunUseCase;
 
   beforeEach(() => {
@@ -80,11 +94,15 @@ describe('StartHotelBeachAccessRunUseCase', () => {
     queueService = {
       addBatch: jest.fn<Promise<void>, [IHotelBeachAccessBatchJobData]>(),
     };
+    dataVersioningService = {
+      reserveNextDatasetVersion: jest.fn(),
+    };
     useCase = new StartHotelBeachAccessRunUseCase(
       canonicalHotelsService,
       runsService,
       runItemsService,
       queueService,
+      dataVersioningService,
     );
   });
 
@@ -97,6 +115,7 @@ describe('StartHotelBeachAccessRunUseCase', () => {
     const secondHotelId = new Types.ObjectId();
 
     runsService.hasActiveRun.mockResolvedValue(false);
+    dataVersioningService.reserveNextDatasetVersion.mockResolvedValue(2);
     canonicalHotelsService.countActiveWithGeo.mockResolvedValue(2);
     canonicalHotelsService.countActiveWithoutGeo.mockResolvedValue(5);
     canonicalHotelsService.listActiveWithGeo.mockResolvedValue([
@@ -144,6 +163,7 @@ describe('StartHotelBeachAccessRunUseCase', () => {
     expect(queueService.addBatch).toHaveBeenCalledWith({
       batchNo: 1,
       batchSize: HOTEL_BEACH_ACCESS_BATCH_SIZE,
+      datasetVersion: 2,
       runId: '2026-05-08T09-15-00-hotel-beach-access',
     });
     expect(result).toEqual({
